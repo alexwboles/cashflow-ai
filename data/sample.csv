@@ -1,0 +1,17 @@
+type,description,date,amount
+in,Smith kitchen remodel — final payment,2026-10-02,8500
+in,Garcia bathroom reno — milestone 2,2026-10-09,4200
+in,Patel roof repair,2026-10-16,2800
+in,Nguyen deck build — deposit,2026-10-23,6000
+in,Carter HVAC install,2026-11-06,9500
+in,Smith kitchen remodel — warranty holdback,2026-11-20,1500
+in,Lee fence replacement,2026-12-04,3300
+in,Garcia bathroom reno — final,2026-12-18,4700
+out,Payroll — crew,2026-10-03,6200
+out,Lumber yard — materials,2026-10-08,3100
+out,Van lease + insurance,2026-10-15,890
+out,Payroll — crew,2026-10-17,6200
+out,Subcontractor — electrician,2026-10-24,2400
+out,Payroll — crew,2026-10-31,6200
+out,Quarterly tax estimate,2026-11-14,4500
+out,Payroll — crew,2026-11-14,6200
