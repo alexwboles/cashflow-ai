@@ -116,10 +116,10 @@
       : '<p class="' + (deltaMin < -0.005 || newCrit > 0 ? "bad" : "good") + '"><b>Impact:</b> lowest weekly balance moves ' +
         CF.money(deltaMin) + " (" + CF.money(tB.minBalance) + " → " + CF.money(tW.minBalance) + ")" +
         (newCrit > 0 ? " — creates " + newCrit + " new shortfall week(s)!" : newCrit < 0 ? " — resolves " + (-newCrit) + " shortfall week(s)." : ".") + "</p>";
-    return '<section class="card"><h2>What-if: late payment</h2>' +
-      '<p class="muted">What if a customer pays late? Pick an invoice and slide the delay.</p>' +
-      '<div class="whatif"><label>Invoice <select id="wiSel">' + opts + "</select></label>" +
-      '<label>Weeks late: <b id="wiVal">' + state.whatIfWeeks + '</b><input type="range" id="wiRange" min="0" max="6" value="' + state.whatIfWeeks + '"></label></div>' +
+    return '<section class="card scenario"><div class="scenario-head"><h2>What-if: late payment</h2>' +
+      '<p class="muted">What if a customer pays late? Pick an invoice and slide the delay.</p></div>' +
+      '<div class="whatif"><label class="wi-field">Invoice <select id="wiSel">' + opts + "</select></label>" +
+      '<label class="wi-field wi-slider">Weeks late: <b id="wiVal">' + state.whatIfWeeks + '</b><input type="range" id="wiRange" min="0" max="6" value="' + state.whatIfWeeks + '"></label></div>' +
       verdict +
       '<p class="muted small">Dashed line on the chart shows the what-if balance. Solid line is your base forecast.</p></section>';
   }
@@ -130,21 +130,25 @@
     var t = CF.totals(fc);
     var app = document.getElementById("app");
     app.innerHTML =
-      '<header class="topbar"><div class="brand">CashFlow AI</div>' +
+      '<header class="topbar"><div class="topbar-inner"><div class="brand">' +
+      '<span class="brand-mark" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M2 9c2.5 0 2.5 3 5 3s2.5-3 5-3 2.5 3 5 3 2.5-3 5-3"/><path d="M2 15c2.5 0 2.5 3 5 3s2.5-3 5-3 2.5 3 5 3 2.5-3 5-3"/></svg></span>' +
+      '<span class="brand-text"><span class="brand-name">CashFlow <em>AI</em></span><span class="brand-sub">13-week treasury forecast</span></span></div>' +
       '<div class="topactions"><button id="loadSample" class="btn ghost light">Sample data</button>' +
-      '<button id="clearAll" class="btn ghost light">Clear</button></div></header>' +
+      '<button id="clearAll" class="btn ghost light">Clear</button></div></div></header>' +
       "<main>" +
-      '<section class="card"><h2>13-week forecast</h2>' +
-      '<div class="balrow"><label>Starting balance <input type="text" id="startBal" value="' + esc(String(state.startBalance)) + '"></label>' +
+      '<section class="card hero"><div class="hero-head"><div><h2>13-week forecast</h2>' +
+      '<p class="muted">Every dollar in and out, week by week &mdash; so a shortfall never surprises you.</p></div>' +
+      '<label class="startbal"><span>Starting balance</span><input type="text" id="startBal" value="' + esc(String(state.startBalance)) + '"></label></div>' +
       '<div class="statgrid">' +
-      '<div class="stat"><b>' + CF.money(t.totalIn) + '</b><span>expected in</span></div>' +
-      '<div class="stat"><b>' + CF.money(t.totalOut) + '</b><span>expected out</span></div>' +
-      '<div class="stat"><b>' + CF.money(t.endBalance) + '</b><span>ending balance</span></div>' +
-      '<div class="stat"><b>' + CF.money(t.minBalance) + '</b><span>lowest week</span></div></div></div>' +
+      '<div class="stat tone-in"><b>' + CF.money(t.totalIn) + '</b><span>expected in</span></div>' +
+      '<div class="stat tone-out"><b>' + CF.money(t.totalOut) + '</b><span>expected out</span></div>' +
+      '<div class="stat tone-brass"><b>' + CF.money(t.endBalance) + '</b><span>ending balance</span></div>' +
+      '<div class="stat tone-ink"><b>' + CF.money(t.minBalance) + '</b><span>lowest week</span></div></div>' +
       renderAlerts(fc) + chartSVG(fc, fcW) +
       '<p class="legend"><span class="sw in"></span> money in <span class="sw out"></span> money out <span class="sw bal"></span> balance <span class="sw wi"></span> what-if balance</p>' +
       "</section>" +
       whatIfPanel(fc, fcW || fc) +
+      '<div class="ledger-grid">' +
       '<section class="card"><h2>Expected money in <span class="count">' + state.items.filter(function (i) { return i.kind === "in"; }).length + "</span></h2>" +
       '<form id="addIn" class="addform"><input type="text" id="inDesc" placeholder="Invoice description" required>' +
       '<input type="date" id="inDate" required><input type="text" id="inAmt" placeholder="Amount" required>' +
@@ -155,6 +159,7 @@
       '<input type="date" id="outDate" required><input type="text" id="outAmt" placeholder="Amount" required>' +
       '<button class="btn" type="submit">Add</button></form>' +
       '<div class="tablewrap"><table><thead><tr><th>Due</th><th>Description</th><th class="num">Amount</th><th></th></tr></thead><tbody>' + itemRows("out") + "</tbody></table></div></section>" +
+      "</div>" +
       '<section class="card"><h2>Import CSV</h2>' +
       '<p class="muted">Header: <code>type,description,date,amount</code> — type is <code>in</code> or <code>out</code>, date as YYYY-MM-DD.</p>' +
       '<div class="row"><input type="file" id="csvFile" accept=".csv"><button id="dlSample" class="btn ghost">Sample CSV</button></div>' +
