@@ -78,14 +78,14 @@
   function renderAlerts(fc) {
     var sf = CF.shortfalls(fc);
     if (!sf.critical.length && !sf.watch.length)
-      return '<div class="alert ok">✅ No shortfalls projected — cash stays positive all 13 weeks.</div>';
+      return '<div class="alert ok">No shortfalls projected — cash stays positive all 13 weeks.</div>';
     var h = "";
     if (sf.critical.length) {
-      h += '<div class="alert crit">🚨 <b>Cash shortfall projected in ' + sf.critical.length + " week(s):</b> " +
+      h += '<div class="alert crit"><b>Cash shortfall projected in ' + sf.critical.length + " week(s):</b> " +
         sf.critical.map(function (w) { return "Wk " + (w.index + 1) + " (" + CF.fmtWeek(w) + ", " + CF.money(w.balance) + ")"; }).join("; ") + "</div>";
     }
     if (sf.watch.length) {
-      h += '<div class="alert warn">⚠️ <b>Thin cash (under $1,000) in ' + sf.watch.length + " week(s):</b> " +
+      h += '<div class="alert warn"><b>Thin cash (under $1,000) in ' + sf.watch.length + " week(s):</b> " +
         sf.watch.map(function (w) { return "Wk " + (w.index + 1) + " (" + CF.money(w.balance) + ")"; }).join("; ") + "</div>";
     }
     return h;
@@ -115,8 +115,8 @@
       ? '<p class="muted">Move the slider to simulate a late payment.</p>'
       : '<p class="' + (deltaMin < -0.005 || newCrit > 0 ? "bad" : "good") + '"><b>Impact:</b> lowest weekly balance moves ' +
         CF.money(deltaMin) + " (" + CF.money(tB.minBalance) + " → " + CF.money(tW.minBalance) + ")" +
-        (newCrit > 0 ? " — ⚠️ creates " + newCrit + " new shortfall week(s)!" : newCrit < 0 ? " — ✅ resolves " + (-newCrit) + " shortfall week(s)." : ".") + "</p>";
-    return '<section class="card"><h2>🔮 What-if: late payment</h2>' +
+        (newCrit > 0 ? " — creates " + newCrit + " new shortfall week(s)!" : newCrit < 0 ? " — resolves " + (-newCrit) + " shortfall week(s)." : ".") + "</p>";
+    return '<section class="card"><h2>What-if: late payment</h2>' +
       '<p class="muted">What if a customer pays late? Pick an invoice and slide the delay.</p>' +
       '<div class="whatif"><label>Invoice <select id="wiSel">' + opts + "</select></label>" +
       '<label>Weeks late: <b id="wiVal">' + state.whatIfWeeks + '</b><input type="range" id="wiRange" min="0" max="6" value="' + state.whatIfWeeks + '"></label></div>' +
@@ -130,11 +130,11 @@
     var t = CF.totals(fc);
     var app = document.getElementById("app");
     app.innerHTML =
-      '<header class="topbar"><div class="brand">💸 CashFlow AI</div>' +
-      '<div class="topactions"><button id="loadSample" class="btn ghost light">↺ Sample data</button>' +
-      '<button id="clearAll" class="btn ghost light">🗑 Clear</button></div></header>' +
+      '<header class="topbar"><div class="brand">CashFlow AI</div>' +
+      '<div class="topactions"><button id="loadSample" class="btn ghost light">Sample data</button>' +
+      '<button id="clearAll" class="btn ghost light">Clear</button></div></header>' +
       "<main>" +
-      '<section class="card"><h2>📊 13-week forecast</h2>' +
+      '<section class="card"><h2>13-week forecast</h2>' +
       '<div class="balrow"><label>Starting balance <input type="text" id="startBal" value="' + esc(String(state.startBalance)) + '"></label>' +
       '<div class="statgrid">' +
       '<div class="stat"><b>' + CF.money(t.totalIn) + '</b><span>expected in</span></div>' +
@@ -145,19 +145,19 @@
       '<p class="legend"><span class="sw in"></span> money in <span class="sw out"></span> money out <span class="sw bal"></span> balance <span class="sw wi"></span> what-if balance</p>' +
       "</section>" +
       whatIfPanel(fc, fcW || fc) +
-      '<section class="card"><h2>🧾 Expected money in <span class="count">' + state.items.filter(function (i) { return i.kind === "in"; }).length + "</span></h2>" +
+      '<section class="card"><h2>Expected money in <span class="count">' + state.items.filter(function (i) { return i.kind === "in"; }).length + "</span></h2>" +
       '<form id="addIn" class="addform"><input type="text" id="inDesc" placeholder="Invoice description" required>' +
       '<input type="date" id="inDate" required><input type="text" id="inAmt" placeholder="Amount" required>' +
-      '<button class="btn" type="submit">➕ Add</button></form>' +
+      '<button class="btn" type="submit">Add</button></form>' +
       '<div class="tablewrap"><table><thead><tr><th>Expected</th><th>Description</th><th class="num">Amount</th><th></th></tr></thead><tbody>' + itemRows("in") + "</tbody></table></div></section>" +
-      '<section class="card"><h2>💳 Expected money out <span class="count">' + state.items.filter(function (i) { return i.kind === "out"; }).length + "</span></h2>" +
+      '<section class="card"><h2>Expected money out <span class="count">' + state.items.filter(function (i) { return i.kind === "out"; }).length + "</span></h2>" +
       '<form id="addOut" class="addform"><input type="text" id="outDesc" placeholder="Bill description" required>' +
       '<input type="date" id="outDate" required><input type="text" id="outAmt" placeholder="Amount" required>' +
-      '<button class="btn" type="submit">➕ Add</button></form>' +
+      '<button class="btn" type="submit">Add</button></form>' +
       '<div class="tablewrap"><table><thead><tr><th>Due</th><th>Description</th><th class="num">Amount</th><th></th></tr></thead><tbody>' + itemRows("out") + "</tbody></table></div></section>" +
-      '<section class="card"><h2>📥 Import CSV</h2>' +
+      '<section class="card"><h2>Import CSV</h2>' +
       '<p class="muted">Header: <code>type,description,date,amount</code> — type is <code>in</code> or <code>out</code>, date as YYYY-MM-DD.</p>' +
-      '<div class="row"><input type="file" id="csvFile" accept=".csv"><button id="dlSample" class="btn ghost">⬇ Sample CSV</button></div>' +
+      '<div class="row"><input type="file" id="csvFile" accept=".csv"><button id="dlSample" class="btn ghost">Sample CSV</button></div>' +
       '<div id="csvMsg" class="csvmsg"></div></section>' +
       '<footer class="foot">CashFlow AI runs 100% in your browser. Forecasts are planning estimates, not financial advice.</footer>' +
       "</main>";
