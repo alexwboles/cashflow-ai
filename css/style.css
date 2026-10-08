@@ -170,7 +170,7 @@ input[type="range"]:focus-visible { box-shadow: var(--ring); }
   background: var(--brass-soft); color: var(--brass-deep); border: 1px solid var(--brass-line);
   border-radius: 0; font-size: 13px; font-family: var(--sans); font-weight: 700; padding: 1px 8px; vertical-align: 2px;
 }
-.addform { display: grid; grid-template-columns: 1.4fr 1fr 1fr auto; gap: 10px; margin: 14px 0 6px; }
+.addform { display: grid; grid-template-columns: 1.4fr 1fr 1fr 0.9fr auto; gap: 10px; margin: 14px 0 6px; }
 .addform input {
   padding: 10px 12px; font-size: 14px; border: 1px solid var(--border); border-radius: 0;
   color: var(--ink); font-family: var(--sans); background: #fff; width: 100%;
@@ -221,4 +221,42 @@ code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .88em; 
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+
+/* ---------- new: recurring badges, inline edit, weekly breakdown ---------- */
+.badge-rec {
+  display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: .03em;
+  color: var(--brass-deep); background: var(--brass-soft); border: 1px solid var(--brass-line);
+  padding: 2px 8px; margin-left: 8px; vertical-align: 1px; border-radius: 0;
+}
+.rowacts { white-space: nowrap; }
+button.edit {
+  background: transparent; border: 1px solid transparent; border-radius: 0;
+  color: var(--muted); font-size: 15px; cursor: pointer; padding: 4px 7px; margin-right: 2px;
+}
+button.edit:hover { color: var(--brass-deep); border-color: var(--brass-line); background: var(--brass-soft); }
+.btn-mini { padding: 7px 12px; font-size: 12.5px; }
+tr.editing td { background: var(--brass-soft); }
+tr.editing input, tr.editing select { width: 100%; padding: 7px 9px; font-size: 13.5px; }
+
+.weektable td, .weektable th { vertical-align: top; }
+.weektable .num { text-align: right; font-variant-numeric: tabular-nums; }
+.weektable .num.in { color: var(--in); }
+.weektable .num.out { color: var(--out); }
+tr.wk-crit td { background: var(--out-soft); }
+.wk-item {
+  display: inline-block; font-size: 12px; padding: 2px 8px; margin: 1px 3px 1px 0;
+  border: 1px solid var(--border); background: #fff; border-radius: 0;
+}
+.wk-item.in { border-left: 3px solid var(--in); }
+.wk-item.out { border-left: 3px solid var(--out); }
+
+/* ---------- print: full 13-week report ---------- */
+@media print {
+  .topbar, .ledger-grid .card .addform, .rowacts, .scenario .whatif, footer.foot,
+  #loadSample, #clearAll, #exportFc, #printReport, .topactions { display: none !important; }
+  body { background: #fff; }
+  main { max-width: none; padding: 0 8px; }
+  .card { box-shadow: none; break-inside: avoid; border: 1px solid #ccc; }
+  .chart { break-inside: avoid; }
 }

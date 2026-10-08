@@ -13,7 +13,8 @@
     items: CF.storageGet("items", null),
     startBalance: CF.storageGet("startBalance", CF.SAMPLE_START_BALANCE),
     whatIfId: "",
-    whatIfWeeks: 0
+    whatIfWeeks: 0,
+    editingId: null
   };
   if (!state.items) {
     state.items = CF.SAMPLE_INVOICES.concat(CF.SAMPLE_BILLS);
@@ -91,13 +92,49 @@
     return h;
   }
 
+  function recBadge(it) {
+    var r = CF.recurringLabel(it);
+    return r ? ' <span class="badge-rec" title="Repeats ' + r + '">↻ ' + r + "</span>" : "";
+  }
+
   function itemRows(kind) {
     return state.items.filter(function (it) { return it.kind === kind; })
       .sort(function (a, b) { return a.date < b.date ? -1 : 1; })
       .map(function (it) {
-        return "<tr><td>" + esc(it.date) + "</td><td>" + esc(it.desc) + "</td><td class='num'>" + CF.money(it.amount) +
-          '</td><td><button class="del" data-id="' + esc(it.id) + '" title="Remove">✕</button></td></tr>';
+        if (state.editingId === it.id) return editRow(it);
+        return "<tr><td>" + esc(it.date) + "</td><td>" + esc(it.desc) + recBadge(it) + "</td><td class='num'>" + CF.money(it.amount) +
+          '</td><td class="rowacts"><button class="edit" data-edit="' + esc(it.id) + '" title="Edit">✎</button>' +
+          '<button class="del" data-id="' + esc(it.id) + '" title="Remove">✕</button></td></tr>';
       }).join("");
+  }
+
+  // Inline edit row: swaps the display row for editable inputs.
+  function editRow(it) {
+    return "<tr class='editing'><td><input type='date' id='editDate' value='" + esc(it.date) + "'></td>" +
+      "<td><input type='text' id='editDesc' value='" + esc(it.desc) + "'>" +
+      "<select id='editRec'><option value=''>One-time</option>" +
+      "<option value='weekly'" + (it.recurring === 'weekly' ? " selected" : "") + ">Weekly</option>" +
+      "<option value='monthly'" + (it.recurring === 'monthly' ? " selected" : "") + ">Monthly</option></select></td>" +
+      "<td class='num'><input type='text' id='editAmt' value='" + esc(String(it.amount)) + "'></td>" +
+      "<td class='rowacts'><button class='btn btn-mini' id='editSave'>Save</button>" +
+      "<button class='btn ghost btn-mini' id='editCancel'>Cancel</button></td></tr>";
+  }
+
+  function weekBreakdown(fc) {
+    var html = "<div class='tablewrap'><table class='weektable'><thead><tr>" +
+      "<th>Week</th><th class='num'>In</th><th class='num'>Out</th><th class='num'>Net</th><th class='num'>Balance</th><th>What's in it</th>" +
+      "</tr></thead><tbody>";
+    fc.forEach(function (w, i) {
+      var items = w.items.map(function (it) {
+        return "<span class='wk-item " + it.kind + "'>" + (it.kind === "in" ? "+" : "−") + esc(it.desc) +
+          " " + CF.money(it.amount) + (it.occurrence > 0 ? " ↻" : "") + "</span>";
+      }).join(" ");
+      html += "<tr" + (w.balance < 0 ? " class='wk-crit'" : "") + "><td><b>Wk " + (i + 1) + "</b><br><span class='muted small'>" +
+        CF.fmtWeek(w) + "</span></td><td class='num in'>" + CF.money(w.inflow) + "</td><td class='num out'>" +
+        CF.money(w.outflow) + "</td><td class='num'>" + CF.money(w.net) + "</td><td class='num'><b>" +
+        CF.money(w.balance) + "</b></td><td>" + (items || "<span class='muted'>—</span>") + "</td></tr>";
+    });
+    return html + "</tbody></table></div>";
   }
 
   function whatIfPanel(fcBase, fcWhat) {
@@ -134,7 +171,9 @@
       '<span class="brand-mark" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M2 9c2.5 0 2.5 3 5 3s2.5-3 5-3 2.5 3 5 3 2.5-3 5-3"/><path d="M2 15c2.5 0 2.5 3 5 3s2.5-3 5-3 2.5 3 5 3 2.5-3 5-3"/></svg></span>' +
       '<span class="brand-text"><span class="brand-name">CashFlow <em>AI</em></span><span class="brand-sub">13-week treasury forecast</span></span></div>' +
       '<div class="topactions"><button id="loadSample" class="btn ghost light">Sample data</button>' +
-      '<button id="clearAll" class="btn ghost light">Clear</button></div></div></header>' +
+      '<button id="clearAll" class="btn ghost light">Clear</button>' +
+      '<button id="exportFc" class="btn ghost light">Export CSV</button>' +
+      '<button id="printReport" class="btn ghost light">Print report</button></div></div></header>' +
       "<main>" +
       '<section class="card hero"><div class="hero-head"><div><h2>13-week forecast</h2>' +
       '<p class="muted">Every dollar in and out, week by week &mdash; so a shortfall never surprises you.</p></div>' +
@@ -152,14 +191,19 @@
       '<section class="card"><h2>Expected money in <span class="count">' + state.items.filter(function (i) { return i.kind === "in"; }).length + "</span></h2>" +
       '<form id="addIn" class="addform"><input type="text" id="inDesc" placeholder="Invoice description" required>' +
       '<input type="date" id="inDate" required><input type="text" id="inAmt" placeholder="Amount" required>' +
+      '<select id="inRec" title="Repeat"><option value="">One-time</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option></select>' +
       '<button class="btn" type="submit">Add</button></form>' +
       '<div class="tablewrap"><table><thead><tr><th>Expected</th><th>Description</th><th class="num">Amount</th><th></th></tr></thead><tbody>' + itemRows("in") + "</tbody></table></div></section>" +
       '<section class="card"><h2>Expected money out <span class="count">' + state.items.filter(function (i) { return i.kind === "out"; }).length + "</span></h2>" +
       '<form id="addOut" class="addform"><input type="text" id="outDesc" placeholder="Bill description" required>' +
       '<input type="date" id="outDate" required><input type="text" id="outAmt" placeholder="Amount" required>' +
+      '<select id="outRec" title="Repeat"><option value="">One-time</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option></select>' +
       '<button class="btn" type="submit">Add</button></form>' +
       '<div class="tablewrap"><table><thead><tr><th>Due</th><th>Description</th><th class="num">Amount</th><th></th></tr></thead><tbody>' + itemRows("out") + "</tbody></table></div></section>" +
       "</div>" +
+      '<section class="card"><h2>Weekly breakdown</h2>' +
+      '<p class="muted">Every week, every dollar — click through the numbers behind the chart.</p>' +
+      weekBreakdown(fc) + "</section>" +
       '<section class="card"><h2>Import CSV</h2>' +
       '<p class="muted">Header: <code>type,description,date,amount</code> — type is <code>in</code> or <code>out</code>, date as YYYY-MM-DD.</p>' +
       '<div class="row"><input type="file" id="csvFile" accept=".csv"><button id="dlSample" class="btn ghost">Sample CSV</button></div>' +
@@ -169,11 +213,33 @@
     bind();
   }
 
-  function addItem(kind, desc, dateStr, amtStr, form) {
+  function addItem(kind, desc, dateStr, amtStr, recurring) {
     var amt = CF.parseAmount(amtStr), dt = CF.parseDate(dateStr);
     if (!desc.trim() || !dt || amt == null || amt <= 0) return false;
-    state.items.push({ id: CF.newId(kind === "in" ? "inv" : "bill"), desc: desc.trim(), date: CF.toISODate(dt), amount: Math.round(amt * 100) / 100, kind: kind });
+    var rec = recurring === "weekly" || recurring === "monthly" ? recurring : "";
+    state.items.push({ id: CF.newId(kind === "in" ? "inv" : "bill"), desc: desc.trim(), date: CF.toISODate(dt), amount: Math.round(amt * 100) / 100, kind: kind, recurring: rec });
     save(); render(); return true;
+  }
+
+  function findItem(id) {
+    for (var i = 0; i < state.items.length; i++) if (state.items[i].id === id) return state.items[i];
+    return null;
+  }
+
+  function saveEdit() {
+    var it = findItem(state.editingId);
+    if (!it) { state.editingId = null; render(); return; }
+    var desc = document.getElementById("editDesc").value;
+    var dt = CF.parseDate(document.getElementById("editDate").value);
+    var amt = CF.parseAmount(document.getElementById("editAmt").value);
+    var rec = document.getElementById("editRec").value;
+    if (!desc.trim() || !dt || amt == null || amt <= 0) { alert("Fix the highlighted problem: description, a valid date, and an amount above $0 are required."); return; }
+    it.desc = desc.trim();
+    it.date = CF.toISODate(dt);
+    it.amount = Math.round(amt * 100) / 100;
+    it.recurring = rec === "weekly" || rec === "monthly" ? rec : "";
+    state.editingId = null;
+    save(); render();
   }
 
   function bind() {
@@ -192,12 +258,34 @@
     });
     document.getElementById("addIn").addEventListener("submit", function (e) {
       e.preventDefault();
-      addItem("in", document.getElementById("inDesc").value, document.getElementById("inDate").value, document.getElementById("inAmt").value);
+      addItem("in", document.getElementById("inDesc").value, document.getElementById("inDate").value, document.getElementById("inAmt").value, document.getElementById("inRec").value);
     });
     document.getElementById("addOut").addEventListener("submit", function (e) {
       e.preventDefault();
-      addItem("out", document.getElementById("outDesc").value, document.getElementById("outDate").value, document.getElementById("outAmt").value);
+      addItem("out", document.getElementById("outDesc").value, document.getElementById("outDate").value, document.getElementById("outAmt").value, document.getElementById("outRec").value);
     });
+    Array.prototype.forEach.call(document.querySelectorAll("[data-edit]"), function (b) {
+      b.addEventListener("click", function () {
+        state.editingId = b.getAttribute("data-edit");
+        render();
+      });
+    });
+    var editSave = document.getElementById("editSave");
+    if (editSave) {
+      editSave.addEventListener("click", saveEdit);
+      document.getElementById("editCancel").addEventListener("click", function () { state.editingId = null; render(); });
+    }
+    document.getElementById("exportFc").addEventListener("click", function () {
+      var csv = CF.forecastToCSV(baseForecast());
+      var blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+      var a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "cashflow-13-week-forecast.csv";
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+    });
+    document.getElementById("printReport").addEventListener("click", function () { window.print(); });
     Array.prototype.forEach.call(document.querySelectorAll(".del"), function (b) {
       b.addEventListener("click", function () {
         state.items = state.items.filter(function (it) { return it.id !== b.getAttribute("data-id"); });

@@ -12,10 +12,11 @@ const bad = (n) => { fail++; console.log('FAIL: ' + n); };
 
 function isoPlus(days) { return CF.toISODate(CF.addDays(new Date(), days)); }
 
-// Flow 1: invoice + bill this week -> week 0 math
+// Flow 1: invoice + bill this week -> week 0 math (anchored to weekStartOf: time-robust)
+const wk0 = CF.weekStartOf(new Date());
 let items = [
-  { id: 'inv-a', desc: 'Test invoice', date: isoPlus(2), amount: 5000, kind: 'in' },
-  { id: 'bill-a', desc: 'Test bill', date: isoPlus(4), amount: 2000, kind: 'out' }
+  { id: 'inv-a', desc: 'Test invoice', date: CF.toISODate(CF.addDays(wk0, 2)), amount: 5000, kind: 'in' },
+  { id: 'bill-a', desc: 'Test bill', date: CF.toISODate(CF.addDays(wk0, 4)), amount: 2000, kind: 'out' }
 ];
 let fc = CF.forecast(items, 1000, 13, {});
 (fc[0].inflow === 5000 && fc[0].outflow === 2000 && fc[0].net === 3000 && fc[0].balance === 4000)
@@ -70,6 +71,49 @@ fc = CF.forecast([], 2500, 13, {});
 const t7 = CF.totals(fc);
 (t7.endBalance === 2500 && t7.minBalance === 2500 && CF.shortfalls(fc).critical.length === 0)
   ? ok('flow7: empty forecast holds $2,500 flat, no alerts') : bad('flow7: ' + JSON.stringify(t7));
+
+// Flow 8: weekly recurring invoice — inflow lands in nearly every week of the horizon
+items = [{ id: 'inv-r', desc: 'Retainer — weekly', date: isoPlus(3), amount: 1000, kind: 'in', recurring: 'weekly' }];
+fc = CF.forecast(items, 0, 13, {});
+const inflowWeeks = fc.filter(w => w.inflow === 1000).length;
+const t8 = CF.totals(fc);
+(inflowWeeks >= 11 && Math.abs(t8.totalIn - inflowWeeks * 1000) < 0.01)
+  ? ok('flow8: weekly retainer in ' + inflowWeeks + '/13 weeks, totals reconcile at ' + CF.money(t8.totalIn)) : bad('flow8: ' + inflowWeeks + ' weeks');
+
+// Flow 9: monthly recurring bill — a few occurrences, unique ids, baseId linkage
+items = [{ id: 'bill-r', desc: 'Office rent', date: isoPlus(3), amount: 1800, kind: 'out', recurring: 'monthly' }];
+fc = CF.forecast(items, 0, 13, {});
+const rentWeeks = fc.filter(w => w.outflow === 1800);
+const rentItems = rentWeeks.flatMap(w => w.items);
+(rentWeeks.length >= 2 && rentWeeks.length <= 4 && rentItems.every(i => i.baseId === 'bill-r') && new Set(rentItems.map(i => i.id)).size === rentItems.length)
+  ? ok('flow9: monthly rent in ' + rentWeeks.length + ' weeks, unique occurrence ids, baseId linked') : bad('flow9: rent weeks=' + rentWeeks.length);
+
+// Flow 10: what-if late payment shifts ALL occurrences of a recurring invoice
+// (the last 3 occurrences fall past the 13-week horizon when shifted +3)
+items = [
+  { id: 'inv-rr', desc: 'Weekly client', date: isoPlus(3), amount: 700, kind: 'in', recurring: 'weekly' },
+  { id: 'bill-x', desc: 'Fixed bill', date: isoPlus(20), amount: 5000, kind: 'out' }
+];
+const fBase = CF.forecast(items, 2000, 13, {});
+const fLate = CF.forecast(items, 2000, 13, { 'inv-rr': 3 });
+const wkBase = fBase.map((w, i) => w.inflow > 0 ? i : -1).filter(i => i >= 0);
+const wkLate = fLate.map((w, i) => w.inflow > 0 ? i : -1).filter(i => i >= 0);
+(wkBase.length >= 10 && wkLate.length === wkBase.length - 3 && wkLate.every((w, i) => w === wkBase[i] + 3) && CF.totals(fLate).minBalance <= CF.totals(fBase).minBalance)
+  ? ok('flow10: 3-week delay shifts all ' + wkLate.length + ' in-horizon retainer occurrences +3 wks; min balance drops or holds') : bad('flow10: recurring what-if');
+
+// Flow 11: forecast CSV export — 13 data rows, items behind the numbers
+const csv = CF.forecastToCSV(fBase);
+const rows = csv.split('\r\n');
+(rows.length === 14 && rows[0] === 'Week,Start,End,Money in,Money out,Net,Balance,Items' && rows[1].indexOf('Wk 1,') === 0 && /Weekly client/.test(rows[1]) && /Fixed bill/.test(csv))
+  ? ok('flow11: forecast CSV = header + 13 weeks, item details included') : bad('flow11: csv rows=' + rows.length);
+
+// Flow 12: past recurring item projects forward (no back-dated resurrection)
+items = [{ id: 'inv-old', desc: 'Legacy weekly', date: '2024-06-03', amount: 250, kind: 'in', recurring: 'weekly' }];
+fc = CF.forecast(items, 0, 13, {});
+const w0 = CF.toISODate(CF.weekStartOf(new Date()));
+const occDates = fc.flatMap(w => w.items).map(i => i.date);
+(occDates.length >= 10 && occDates.every(d => d >= w0))
+  ? ok('flow12: legacy weekly restarts this week — ' + occDates.length + ' forward occurrences, none back-dated') : bad('flow12: ' + occDates.length + ' occ');
 
 console.log('---');
 console.log('e2e: ' + pass + ' passed, ' + fail + ' failed');

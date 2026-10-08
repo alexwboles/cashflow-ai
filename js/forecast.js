@@ -91,7 +91,46 @@
 
   function addDays(d, n) { var x = new Date(d); x.setDate(x.getDate() + n); return x; }
 
-  // shiftMap: { itemId: weeksLate } — delays 'in' items (what-if late payment)
+  function addMonths(d, n) {
+    var y = d.getFullYear(), m = d.getMonth() + n, day = d.getDate();
+    var last = new Date(y, m + 1, 0).getDate();
+    return new Date(y, m, Math.min(day, last));
+  }
+
+  // Recurring items (recurring: 'weekly' | 'monthly') are projected forward
+  // across the horizon instead of appearing once. Past occurrences are NOT
+  // resurrected: projection starts at the later of (item date, current week).
+  // Each occurrence carries baseId (the original item id) and an occurrence index.
+  function expandRecurring(items, weeks) {
+    weeks = weeks || 13;
+    var today = new Date();
+    var w0 = weekStartOf(today);
+    var horizonEnd = addDays(w0, weeks * 7 - 1);
+    var out = [];
+    (items || []).forEach(function (it) {
+      var rec = it.recurring === 'weekly' ? 'weekly' : (it.recurring === 'monthly' ? 'monthly' : '');
+      var d0 = parseDate(it.date);
+      if (!rec || !d0) { out.push(it); return; }
+      var start = d0 < w0 ? new Date(w0.getTime()) : d0;
+      var d = new Date(start.getTime());
+      var k = 0;
+      while (d <= horizonEnd && k <= weeks) {
+        var occ = {};
+        for (var key in it) occ[key] = it[key];
+        occ.date = toISODate(d);
+        occ.baseId = it.id;
+        occ.id = it.id + '#' + k;
+        occ.occurrence = k;
+        out.push(occ);
+        d = rec === 'weekly' ? addDays(d, 7) : addMonths(d, 1);
+        k++;
+      }
+    });
+    return out;
+  }
+
+  // shiftMap: { itemId: weeksLate } — delays 'in' items (what-if late payment).
+  // For recurring invoices, shifting the base id shifts every occurrence.
   function forecast(items, startBalance, weeks, shiftMap) {
     weeks = weeks || 13;
     shiftMap = shiftMap || {};
@@ -102,10 +141,10 @@
       var ws = addDays(w0, w * 7), we = addDays(w0, w * 7 + 6);
       fc.push({ index: w, start: toISODate(ws), end: toISODate(we), inflow: 0, outflow: 0, net: 0, balance: 0, items: [] });
     }
-    (items || []).forEach(function (it) {
+    expandRecurring(items, weeks).forEach(function (it) {
       var dt = parseDate(it.date);
       if (!dt) return;
-      var late = Math.max(0, Math.min(12, parseInt(shiftMap[it.id] || 0, 10) || 0));
+      var late = Math.max(0, Math.min(12, parseInt(shiftMap[it.baseId || it.id] || 0, 10) || 0));
       if (it.kind === "in" && late) dt = addDays(dt, late * 7);
       var wi = Math.floor((weekStartOf(dt) - w0) / (7 * 86400000));
       if (wi < 0) wi = 0;               // overdue / past items land in week 0
@@ -159,6 +198,28 @@
     return short(wk.start) + "–" + short(wk.end);
   }
 
+  function csvCell(v) {
+    var s = String(v == null ? "" : v);
+    return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  }
+
+  // Week-by-week forecast export: one row per week + the items behind the numbers.
+  function forecastToCSV(fc) {
+    var rows = [["Week", "Start", "End", "Money in", "Money out", "Net", "Balance", "Items"]];
+    (fc || []).forEach(function (w, i) {
+      var items = w.items.map(function (it) {
+        return (it.kind === "in" ? "+" : "-") + it.desc + " (" + money(it.amount) + (it.occurrence > 0 ? ", recurring" : "") + ")";
+      }).join("; ");
+      rows.push(["Wk " + (i + 1), w.start, w.end,
+        w.inflow.toFixed(2), w.outflow.toFixed(2), w.net.toFixed(2), w.balance.toFixed(2), items]);
+    });
+    return rows.map(function (r) { return r.map(csvCell).join(","); }).join("\r\n");
+  }
+
+  function recurringLabel(it) {
+    return it.recurring === 'weekly' ? 'weekly' : it.recurring === 'monthly' ? 'monthly' : '';
+  }
+
   var _seq = 1;
   function newId(prefix) { return (prefix || "it") + "-" + Date.now().toString(36) + "-" + (_seq++); }
 
@@ -183,9 +244,10 @@
   return {
     parseAmount: parseAmount, parseDate: parseDate, toISODate: toISODate,
     parseCSV: parseCSV, rowsToItems: rowsToItems,
-    weekStartOf: weekStartOf, addDays: addDays,
+    weekStartOf: weekStartOf, addDays: addDays, addMonths: addMonths,
+    expandRecurring: expandRecurring, recurringLabel: recurringLabel,
     forecast: forecast, shortfalls: shortfalls, totals: totals,
-    money: money, fmtWeek: fmtWeek, newId: newId,
+    money: money, fmtWeek: fmtWeek, forecastToCSV: forecastToCSV, newId: newId,
     storageGet: storageGet, storageSet: storageSet
   };
 });
