@@ -12,9 +12,12 @@
   var state = {
     items: CF.storageGet("items", null),
     startBalance: CF.storageGet("startBalance", CF.SAMPLE_START_BALANCE),
+    warnAt: CF.storageGet("warnAt", 1000),
     whatIfId: "",
     whatIfWeeks: 0,
-    editingId: null
+    editingId: null,
+    searchIn: "",
+    searchOut: ""
   };
   if (!state.items) {
     state.items = CF.SAMPLE_INVOICES.concat(CF.SAMPLE_BILLS);
@@ -25,6 +28,7 @@
   function save() {
     CF.storageSet("items", state.items);
     CF.storageSet("startBalance", state.startBalance);
+    CF.storageSet("warnAt", state.warnAt);
   }
 
   function baseForecast() { return CF.forecast(state.items, state.startBalance, 13, {}); }
@@ -76,8 +80,9 @@
   }
 
   // ---------- render ----------
-  function renderAlerts(fc) {
-    var sf = CF.shortfalls(fc);
+  function renderAlerts(fc, warnAt) {
+    warnAt = (warnAt == null) ? 1000 : warnAt;
+    var sf = CF.shortfalls(fc, warnAt);
     if (!sf.critical.length && !sf.watch.length)
       return '<div class="alert ok">No shortfalls projected — cash stays positive all 13 weeks.</div>';
     var h = "";
@@ -86,7 +91,7 @@
         sf.critical.map(function (w) { return "Wk " + (w.index + 1) + " (" + CF.fmtWeek(w) + ", " + CF.money(w.balance) + ")"; }).join("; ") + "</div>";
     }
     if (sf.watch.length) {
-      h += '<div class="alert warn"><b>Thin cash (under $1,000) in ' + sf.watch.length + " week(s):</b> " +
+      h += '<div class="alert warn"><b>Thin cash (under ' + CF.money(warnAt) + ") in " + sf.watch.length + " week(s):</b> " +
         sf.watch.map(function (w) { return "Wk " + (w.index + 1) + " (" + CF.money(w.balance) + ")"; }).join("; ") + "</div>";
     }
     return h;
@@ -98,8 +103,10 @@
   }
 
   function itemRows(kind) {
+    var q = (kind === "in" ? state.searchIn : state.searchOut).toLowerCase();
     return state.items.filter(function (it) { return it.kind === kind; })
       .sort(function (a, b) { return a.date < b.date ? -1 : 1; })
+      .filter(function (it) { return !q || it.desc.toLowerCase().indexOf(q) !== -1; })
       .map(function (it) {
         if (state.editingId === it.id) return editRow(it);
         return "<tr><td>" + esc(it.date) + "</td><td>" + esc(it.desc) + recBadge(it) + "</td><td class='num'>" + CF.money(it.amount) +
@@ -138,25 +145,31 @@
   }
 
   function whatIfPanel(fcBase, fcWhat) {
-    var ins = state.items.filter(function (it) { return it.kind === "in"; })
-      .sort(function (a, b) { return a.date < b.date ? -1 : 1; });
-    if (!state.whatIfId && ins.length) state.whatIfId = ins[0].id;
-    var opts = ins.map(function (it) {
+    var all = state.items.slice().sort(function (a, b) { return a.date < b.date ? -1 : 1; });
+    if (!state.whatIfId && all.length) state.whatIfId = all[0].id;
+    var sel = all.filter(function (it) { return it.id === state.whatIfId; })[0];
+    var isOut = sel && sel.kind === "out";
+    var opts = all.map(function (it) {
+      var tag = it.kind === "in" ? "+ " : "− ";
       return '<option value="' + esc(it.id) + '"' + (it.id === state.whatIfId ? " selected" : "") + ">" +
-        esc(it.desc) + " (" + CF.money(it.amount) + ")</option>";
+        tag + esc(it.desc) + " (" + CF.money(it.amount) + ")" + (CF.recurringLabel(it) ? " ↻" : "") + "</option>";
     }).join("");
     var tB = CF.totals(fcBase), tW = CF.totals(fcWhat);
     var deltaMin = tW.minBalance - tB.minBalance;
     var newCrit = CF.shortfalls(fcWhat).critical.length - CF.shortfalls(fcBase).critical.length;
     var verdict = state.whatIfWeeks === 0
-      ? '<p class="muted">Move the slider to simulate a late payment.</p>'
+      ? '<p class="muted">Move the slider to simulate a shifted payment.</p>'
       : '<p class="' + (deltaMin < -0.005 || newCrit > 0 ? "bad" : "good") + '"><b>Impact:</b> lowest weekly balance moves ' +
         CF.money(deltaMin) + " (" + CF.money(tB.minBalance) + " → " + CF.money(tW.minBalance) + ")" +
         (newCrit > 0 ? " — creates " + newCrit + " new shortfall week(s)!" : newCrit < 0 ? " — resolves " + (-newCrit) + " shortfall week(s)." : ".") + "</p>";
-    return '<section class="card scenario"><div class="scenario-head"><h2>What-if: late payment</h2>' +
-      '<p class="muted">What if a customer pays late? Pick an invoice and slide the delay.</p></div>' +
-      '<div class="whatif"><label class="wi-field">Invoice <select id="wiSel">' + opts + "</select></label>" +
-      '<label class="wi-field wi-slider">Weeks late: <b id="wiVal">' + state.whatIfWeeks + '</b><input type="range" id="wiRange" min="0" max="6" value="' + state.whatIfWeeks + '"></label></div>' +
+    var sliderLabel = isOut
+      ? 'Weeks shifted <span class="muted small">(negative = pay early)</span>:'
+      : "Weeks late:";
+    return '<section class="card scenario"><div class="scenario-head"><h2>What-if: shifted payment</h2>' +
+      '<p class="muted">What if a customer pays late — or you delay (or rush) a bill? Pick an item and slide it.</p></div>' +
+      '<div class="whatif"><label class="wi-field">Item <select id="wiSel">' + opts + "</select></label>" +
+      '<label class="wi-field wi-slider">' + sliderLabel + ' <b id="wiVal">' + state.whatIfWeeks + '</b>' +
+      '<input type="range" id="wiRange" min="-4" max="6" value="' + state.whatIfWeeks + '"></label></div>' +
       verdict +
       '<p class="muted small">Dashed line on the chart shows the what-if balance. Solid line is your base forecast.</p></section>';
   }
@@ -183,18 +196,21 @@
       '<div class="stat tone-out"><b>' + CF.money(t.totalOut) + '</b><span>expected out</span></div>' +
       '<div class="stat tone-brass"><b>' + CF.money(t.endBalance) + '</b><span>ending balance</span></div>' +
       '<div class="stat tone-ink"><b>' + CF.money(t.minBalance) + '</b><span>lowest week</span></div></div>' +
-      renderAlerts(fc) + chartSVG(fc, fcW) +
+      '<label class="alertlevel"><span>Low-cash alert level</span><input type="text" id="warnAt" value="' + esc(String(state.warnAt)) + '" title="Warn when weekly balance drops under this amount"></label>' +
+      renderAlerts(fc, state.warnAt) + chartSVG(fc, fcW) +
       '<p class="legend"><span class="sw in"></span> money in <span class="sw out"></span> money out <span class="sw bal"></span> balance <span class="sw wi"></span> what-if balance</p>' +
       "</section>" +
       whatIfPanel(fc, fcW || fc) +
       '<div class="ledger-grid">' +
       '<section class="card"><h2>Expected money in <span class="count">' + state.items.filter(function (i) { return i.kind === "in"; }).length + "</span></h2>" +
+      '<input type="search" id="searchIn" class="ledger-search" placeholder="Search invoices…" value="' + esc(state.searchIn) + '" aria-label="Search invoices">' +
       '<form id="addIn" class="addform"><input type="text" id="inDesc" placeholder="Invoice description" required>' +
       '<input type="date" id="inDate" required><input type="text" id="inAmt" placeholder="Amount" required>' +
       '<select id="inRec" title="Repeat"><option value="">One-time</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option></select>' +
       '<button class="btn" type="submit">Add</button></form>' +
       '<div class="tablewrap"><table><thead><tr><th>Expected</th><th>Description</th><th class="num">Amount</th><th></th></tr></thead><tbody>' + itemRows("in") + "</tbody></table></div></section>" +
       '<section class="card"><h2>Expected money out <span class="count">' + state.items.filter(function (i) { return i.kind === "out"; }).length + "</span></h2>" +
+      '<input type="search" id="searchOut" class="ledger-search" placeholder="Search bills…" value="' + esc(state.searchOut) + '" aria-label="Search bills">' +
       '<form id="addOut" class="addform"><input type="text" id="outDesc" placeholder="Bill description" required>' +
       '<input type="date" id="outDate" required><input type="text" id="outAmt" placeholder="Amount" required>' +
       '<select id="outRec" title="Repeat"><option value="">One-time</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option></select>' +
@@ -242,11 +258,46 @@
     save(); render();
   }
 
+  // (Re)binds the edit/delete buttons inside ledger table bodies. Called by
+  // bind() and by the live search handlers that swap tbody contents.
+  function bindRowButtons() {
+    Array.prototype.forEach.call(document.querySelectorAll("[data-edit]"), function (b) {
+      b.addEventListener("click", function () {
+        state.editingId = b.getAttribute("data-edit");
+        render();
+      });
+    });
+    Array.prototype.forEach.call(document.querySelectorAll(".del"), function (b) {
+      b.addEventListener("click", function () {
+        state.items = state.items.filter(function (it) { return it.id !== b.getAttribute("data-id"); });
+        if (state.whatIfId === b.getAttribute("data-id")) { state.whatIfId = ""; state.whatIfWeeks = 0; }
+        save(); render();
+      });
+    });
+  }
+
   function bind() {
     document.getElementById("startBal").addEventListener("change", function (e) {
       var v = CF.parseAmount(e.target.value);
       if (v != null && v >= 0) { state.startBalance = v; save(); render(); }
       else { e.target.value = state.startBalance; }
+    });
+    document.getElementById("warnAt").addEventListener("change", function (e) {
+      var v = CF.parseAmount(e.target.value);
+      if (v != null && v >= 0) { state.warnAt = v; save(); render(); }
+      else { e.target.value = state.warnAt; }
+    });
+    document.getElementById("searchIn").addEventListener("input", function (e) {
+      state.searchIn = e.target.value;
+      var tb = document.querySelector("#searchIn").closest(".card").querySelector("tbody");
+      if (tb) tb.innerHTML = itemRows("in");
+      bindRowButtons();
+    });
+    document.getElementById("searchOut").addEventListener("input", function (e) {
+      state.searchOut = e.target.value;
+      var tb = document.querySelector("#searchOut").closest(".card").querySelector("tbody");
+      if (tb) tb.innerHTML = itemRows("out");
+      bindRowButtons();
     });
     document.getElementById("loadSample").addEventListener("click", function () {
       state.items = CF.SAMPLE_INVOICES.concat(CF.SAMPLE_BILLS);
@@ -264,12 +315,7 @@
       e.preventDefault();
       addItem("out", document.getElementById("outDesc").value, document.getElementById("outDate").value, document.getElementById("outAmt").value, document.getElementById("outRec").value);
     });
-    Array.prototype.forEach.call(document.querySelectorAll("[data-edit]"), function (b) {
-      b.addEventListener("click", function () {
-        state.editingId = b.getAttribute("data-edit");
-        render();
-      });
-    });
+    bindRowButtons();
     var editSave = document.getElementById("editSave");
     if (editSave) {
       editSave.addEventListener("click", saveEdit);
@@ -286,13 +332,6 @@
       setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 500);
     });
     document.getElementById("printReport").addEventListener("click", function () { window.print(); });
-    Array.prototype.forEach.call(document.querySelectorAll(".del"), function (b) {
-      b.addEventListener("click", function () {
-        state.items = state.items.filter(function (it) { return it.id !== b.getAttribute("data-id"); });
-        if (state.whatIfId === b.getAttribute("data-id")) { state.whatIfId = ""; state.whatIfWeeks = 0; }
-        save(); render();
-      });
-    });
     document.getElementById("wiSel").addEventListener("change", function (e) { state.whatIfId = e.target.value; render(); });
     document.getElementById("wiRange").addEventListener("input", function (e) {
       state.whatIfWeeks = +e.target.value;

@@ -129,8 +129,10 @@
     return out;
   }
 
-  // shiftMap: { itemId: weeksLate } — delays 'in' items (what-if late payment).
-  // For recurring invoices, shifting the base id shifts every occurrence.
+  // shiftMap: { itemId: weeksShift } — delays 'in' items (what-if late payment)
+  // and shifts 'out' items (what-if delayed bill payment). Negative values
+  // move an item earlier (e.g. paying a bill early). For recurring items,
+  // shifting the base id shifts every occurrence.
   function forecast(items, startBalance, weeks, shiftMap) {
     weeks = weeks || 13;
     shiftMap = shiftMap || {};
@@ -144,8 +146,8 @@
     expandRecurring(items, weeks).forEach(function (it) {
       var dt = parseDate(it.date);
       if (!dt) return;
-      var late = Math.max(0, Math.min(12, parseInt(shiftMap[it.baseId || it.id] || 0, 10) || 0));
-      if (it.kind === "in" && late) dt = addDays(dt, late * 7);
+      var shift = Math.max(-12, Math.min(12, parseInt(shiftMap[it.baseId || it.id] || 0, 10) || 0));
+      if (shift) dt = addDays(dt, shift * 7);
       var wi = Math.floor((weekStartOf(dt) - w0) / (7 * 86400000));
       if (wi < 0) wi = 0;               // overdue / past items land in week 0
       if (wi >= weeks) return;          // beyond the horizon

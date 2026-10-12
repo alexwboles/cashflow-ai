@@ -94,6 +94,23 @@ h2 { font-family: var(--serif); font-size: 22px; font-weight: 700; letter-spacin
   font-variant-numeric: tabular-nums; background: #fff;
 }
 .startbal input:focus { outline: none; border-color: var(--brass); box-shadow: var(--ring); }
+.alertlevel {
+  display: flex; align-items: center; gap: 10px;
+  font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: var(--muted);
+  background: var(--paper); border: 1px solid var(--border); border-radius: 0; padding: 10px 14px;
+  margin-bottom: 14px; width: fit-content;
+}
+.alertlevel input {
+  width: 110px; padding: 8px 10px; font-size: 16px; font-weight: 700;
+  border: 1px solid var(--border); border-radius: 0; color: var(--ink);
+  font-variant-numeric: tabular-nums; background: #fff;
+}
+.alertlevel input:focus { outline: none; border-color: var(--brass); box-shadow: var(--ring); }
+.ledger-search {
+  width: 100%; box-sizing: border-box; margin: 10px 0 2px; padding: 9px 12px;
+  border: 1px solid var(--border); border-radius: 0; font-size: 14px; background: #fff; color: var(--ink);
+}
+.ledger-search:focus { outline: none; border-color: var(--brass); box-shadow: var(--ring); }
 
 .statgrid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 18px; }
 .stat {
