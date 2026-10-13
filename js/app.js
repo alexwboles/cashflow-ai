@@ -14,8 +14,8 @@
     startBalance: CF.storageGet("startBalance", CF.SAMPLE_START_BALANCE),
     warnAt: CF.storageGet("warnAt", 1000),
     horizon: CF.storageGet("horizon", 13),
-    whatIfId: "",
-    whatIfWeeks: 0,
+    scenarios: CF.storageGet("scenarios", []),
+    activeScn: CF.storageGet("activeScn", ""),
     editingId: null,
     searchIn: "",
     searchOut: ""
@@ -32,52 +32,83 @@
     CF.storageSet("startBalance", state.startBalance);
     CF.storageSet("warnAt", state.warnAt);
     CF.storageSet("horizon", state.horizon);
+    CF.storageSet("scenarios", state.scenarios);
+    CF.storageSet("activeScn", state.activeScn);
   }
 
   function baseForecast() { return CF.forecast(state.items, state.startBalance, state.horizon, {}); }
-  function whatIfForecast() {
-    var shift = {};
-    if (state.whatIfId && state.whatIfWeeks > 0) shift[state.whatIfId] = state.whatIfWeeks;
-    return CF.forecast(state.items, state.startBalance, state.horizon, shift);
+  function scenarioForecasts() {
+    return state.scenarios.map(function (sc) {
+      return { scn: sc, fc: CF.forecast(state.items, state.startBalance, state.horizon, sc.shifts || {}) };
+    });
   }
+  function scnColor(i) { return SCN_COLORS[i % SCN_COLORS.length]; }
 
   // ---------- SVG chart ----------
-  function chartSVG(fc, fcWhatIf) {
-    var W = 860, H = 300, padL = 56, padB = 44, padT = 18;
+  var SCN_COLORS = ["#8a6d1f", "#a03d2d", "#3d6b8e"];
+  var SCN_DASH = ["7 5", "3 4", "11 4 3 4"];
+
+  function chartSVG(fc, scnFcs) {
+    scnFcs = scnFcs || [];
+    var W = 860, H = 320, padL = 56, padB = 52, padT = 18;
     var cw = W - padL - 12, ch = H - padT - padB;
-    var maxV = 1000;
-    fc.forEach(function (w) {
-      maxV = Math.max(maxV, w.inflow, w.outflow, Math.abs(w.balance));
-    });
-    function y(v) { return padT + ch - (v / maxV) * ch; }
+    var maxV = 1000, minV = 0;
+    function swallow(f) {
+      f.forEach(function (w) {
+        maxV = Math.max(maxV, w.inflow, w.outflow, w.balance);
+        minV = Math.min(minV, w.balance);
+      });
+    }
+    swallow(fc);
+    scnFcs.forEach(function (s) { swallow(s.fc); });
+    var span = (maxV - minV) || 1;
+    function y(v) { return padT + ch - ((v - minV) / span) * ch; }
     function x(i) { return padL + (i + 0.5) * (cw / fc.length); }
-    var bw = Math.min(26, (cw / fc.length) / 3.2);
+    var bw = Math.min(20, (cw / fc.length) / 3.6);
 
     var s = '<svg viewBox="0 0 ' + W + " " + H + '" class="chart" role="img" aria-label="' + fc.length + '-week cash flow chart">';
+    // danger zone below zero
+    s += '<rect x="' + padL + '" y="' + y(0).toFixed(1) + '" width="' + cw + '" height="' +
+      (padT + ch - y(0)).toFixed(1) + '" class="dangerzone"/>';
     // gridlines
     [0.25, 0.5, 0.75, 1].forEach(function (f) {
-      var gv = Math.round(maxV * f / 500) * 500;
-      s += '<line x1="' + padL + '" y1="' + y(gv) + '" x2="' + (W - 12) + '" y2="' + y(gv) + '" class="grid"/>' +
-        '<text x="' + (padL - 6) + '" y="' + (y(gv) + 4) + '" class="axis" text-anchor="end">$' + (gv / 1000) + "k</text>";
+      var gv = Math.round((minV + span * f) / 500) * 500;
+      var glabel = gv === 0 ? "0" : "$" + (gv / 1000) + "k";
+      s += '<line x1="' + padL + '" y1="' + y(gv).toFixed(1) + '" x2="' + (W - 12) + '" y2="' + y(gv).toFixed(1) + '" class="grid"/>' +
+        '<text x="' + (padL - 6) + '" y="' + (y(gv) + 4).toFixed(1) + '" class="axis" text-anchor="end">' + glabel + "</text>";
     });
-    // bars: inflow green, outflow red
+    // bars: inflow / outflow (slim, behind the lines)
     fc.forEach(function (w, i) {
       var cx = x(i);
       var crit = w.balance < 0;
-      s += '<rect x="' + (cx - bw - 2) + '" y="' + y(w.inflow) + '" width="' + bw + '" height="' + (y(0) - y(w.inflow)) + '" class="bar-in" rx="2"/>';
-      s += '<rect x="' + (cx + 2) + '" y="' + y(w.outflow) + '" width="' + bw + '" height="' + (y(0) - y(w.outflow)) + '" class="bar-out" rx="2"/>';
-      if (crit) s += '<rect x="' + (cx - bw - 6) + '" y="' + padT + '" width="' + (bw * 2 + 12) + '" height="' + ch + '" class="shortband"/>';
-      if (i % 2 === 0) s += '<text x="' + cx + '" y="' + (H - 26) + '" class="axis" text-anchor="middle">' + CF.fmtWeek(w).split("–")[0] + "</text>";
-      s += "<title>Wk " + (i + 1) + " " + CF.fmtWeek(w) + ": in " + CF.money(w.inflow) + ", out " + CF.money(w.outflow) + ", balance " + CF.money(w.balance) + "</title>";
+      if (crit) s += '<rect x="' + (cx - bw - 7).toFixed(1) + '" y="' + padT + '" width="' + (bw * 2 + 14).toFixed(1) + '" height="' + ch + '" class="shortband"/>';
+      s += '<rect x="' + (cx - bw - 2).toFixed(1) + '" y="' + y(w.inflow).toFixed(1) + '" width="' + bw + '" height="' + Math.max(0, y(0) - y(w.inflow)).toFixed(1) + '" class="bar-in"/>';
+      s += '<rect x="' + (cx + 2).toFixed(1) + '" y="' + y(w.outflow).toFixed(1) + '" width="' + bw + '" height="' + Math.max(0, y(0) - y(w.outflow)).toFixed(1) + '" class="bar-out"/>';
     });
-    // balance line (what-if dashed)
-    function linePath(f, cls) {
-      var d = f.map(function (w, i) { return (i ? "L" : "M") + x(i).toFixed(1) + "," + y(Math.max(0, w.balance)).toFixed(1); }).join(" ");
-      return '<path d="' + d + '" class="' + cls + '" fill="none"/>';
+    // base balance: area fill + thick line (NOT clamped — dips into the danger zone)
+    function lineD(f) {
+      return f.map(function (w, i) { return (i ? "L" : "M") + x(i).toFixed(1) + "," + y(w.balance).toFixed(1); }).join(" ");
     }
-    s += linePath(fc, "bal-line");
-    if (fcWhatIf) s += linePath(fcWhatIf, "bal-line whatif");
-    s += '<line x1="' + padL + '" y1="' + y(0) + '" x2="' + (W - 12) + '" y2="' + y(0) + '" class="zero"/>';
+    var baseD = lineD(fc);
+    s += '<path d="' + baseD + " L" + x(fc.length - 1).toFixed(1) + "," + y(0).toFixed(1) + " L" + x(0).toFixed(1) + "," + y(0).toFixed(1) + ' Z" class="bal-area" fill="none"/>';
+    // scenario lines (under the base line)
+    scnFcs.forEach(function (sf, si) {
+      s += '<path d="' + lineD(sf.fc) + '" class="scn-line" fill="none" stroke="' + esc(sf.scn.color) +
+        '" stroke-dasharray="' + SCN_DASH[si % SCN_DASH.length] + '"/>';
+    });
+    s += '<path d="' + baseD + '" class="bal-line" fill="none"/>';
+    s += '<line x1="' + padL + '" y1="' + y(0).toFixed(1) + '" x2="' + (W - 12) + '" y2="' + y(0).toFixed(1) + '" class="zero"/>';
+    // week labels + tooltips
+    fc.forEach(function (w, i) {
+      var cx = x(i);
+      if (i % 2 === 0) s += '<text x="' + cx.toFixed(1) + '" y="' + (H - 30) + '" class="axis" text-anchor="middle">' + CF.fmtWeek(w).split("–")[0] + "</text>";
+      var tip = "Wk " + (i + 1) + " " + CF.fmtWeek(w) + ": in " + CF.money(w.inflow) + ", out " + CF.money(w.outflow) + ", balance " + CF.money(w.balance);
+      scnFcs.forEach(function (sf) {
+        tip += " | " + sf.scn.name + ": " + CF.money(sf.fc[i].balance);
+      });
+      s += '<rect x="' + (cx - cw / fc.length / 2).toFixed(1) + '" y="' + padT + '" width="' + (cw / fc.length).toFixed(1) +
+        '" height="' + ch + '" class="wk-hit"><title>' + esc(tip) + "</title></rect>";
+    });
     s += "</svg>";
     return s;
   }
@@ -154,40 +185,87 @@
     return html + "</tbody></table></div>";
   }
 
-  function whatIfPanel(fcBase, fcWhat) {
-    var all = state.items.slice().sort(function (a, b) { return a.date < b.date ? -1 : 1; });
-    if (!state.whatIfId && all.length) state.whatIfId = all[0].id;
-    var sel = all.filter(function (it) { return it.id === state.whatIfId; })[0];
-    var isOut = sel && sel.kind === "out";
-    var opts = all.map(function (it) {
-      var tag = it.kind === "in" ? "+ " : "− ";
-      return '<option value="' + esc(it.id) + '"' + (it.id === state.whatIfId ? " selected" : "") + ">" +
-        tag + esc(it.desc) + " (" + CF.money(it.amount) + ")" + (CF.recurringLabel(it) ? " ↻" : "") + "</option>";
+  // ---------- scenario desk ----------
+  function scnById(id) {
+    for (var i = 0; i < state.scenarios.length; i++) if (state.scenarios[i].id === id) return state.scenarios[i];
+    return null;
+  }
+
+  function cmpRow(name, color, endBal, minBal, critWeeks, minDelta) {
+    var dCls = minDelta == null ? "" : (minDelta < -0.005 ? "bad" : minDelta > 0.005 ? "good" : "");
+    var dTxt = minDelta == null ? "—" : (minDelta > 0 ? "+" : "") + CF.money(minDelta);
+    return '<tr><td><span class="scn-dot" style="background:' + esc(color) + '"></span><b>' + esc(name) + "</b></td>" +
+      '<td class="num">' + CF.money(endBal) + '</td><td class="num ' + (minBal < 0 ? "bad" : "") + '">' + CF.money(minBal) + "</td>" +
+      '<td class="num ' + (critWeeks > 0 ? "bad" : "") + '">' + critWeeks + '</td><td class="num ' + dCls + '">' + dTxt + "</td></tr>";
+  }
+
+  function scenarioDesk(fcBase, scnFcs) {
+    var scns = state.scenarios;
+    var tabs = scns.map(function (sc) {
+      return '<button class="scn-chip' + (state.activeScn === sc.id ? " active" : "") + '" data-scn="' + esc(sc.id) + '">' +
+        '<span class="scn-dot" style="background:' + esc(sc.color) + '"></span>' + esc(sc.name) + "</button>";
     }).join("");
-    var tB = CF.totals(fcBase), tW = CF.totals(fcWhat);
-    var deltaMin = tW.minBalance - tB.minBalance;
-    var newCrit = CF.shortfalls(fcWhat).critical.length - CF.shortfalls(fcBase).critical.length;
-    var verdict = state.whatIfWeeks === 0
-      ? '<p class="muted">Move the slider to simulate a shifted payment.</p>'
-      : '<p class="' + (deltaMin < -0.005 || newCrit > 0 ? "bad" : "good") + '"><b>Impact:</b> lowest weekly balance moves ' +
-        CF.money(deltaMin) + " (" + CF.money(tB.minBalance) + " → " + CF.money(tW.minBalance) + ")" +
-        (newCrit > 0 ? " — creates " + newCrit + " new shortfall week(s)!" : newCrit < 0 ? " — resolves " + (-newCrit) + " shortfall week(s)." : ".") + "</p>";
-    var sliderLabel = isOut
-      ? 'Weeks shifted <span class="muted small">(negative = pay early)</span>:'
-      : "Weeks late:";
-    return '<section class="card scenario"><div class="scenario-head"><h2>What-if: shifted payment</h2>' +
-      '<p class="muted">What if a customer pays late — or you delay (or rush) a bill? Pick an item and slide it.</p></div>' +
-      '<div class="whatif"><label class="wi-field">Item <select id="wiSel">' + opts + "</select></label>" +
-      '<label class="wi-field wi-slider">' + sliderLabel + ' <b id="wiVal">' + state.whatIfWeeks + '</b>' +
-      '<input type="range" id="wiRange" min="-4" max="6" value="' + state.whatIfWeeks + '"></label></div>' +
-      verdict +
-      '<p class="muted small">Dashed line on the chart shows the what-if balance. Solid line is your base forecast.</p></section>';
+    if (scns.length < 3) tabs += '<button class="btn ghost btn-mini" id="scnNew">+ New scenario</button>';
+    else tabs += '<span class="muted small">3-scenario max</span>';
+
+    var editor = "";
+    var active = scnById(state.activeScn);
+    if (active) {
+      var all = state.items.slice().sort(function (a, b) { return a.date < b.date ? -1 : 1; });
+      var opts = all.map(function (it) {
+        var tag = it.kind === "in" ? "+ " : "− ";
+        return '<option value="' + esc(it.id) + '">' + tag + esc(it.desc) + " (" + CF.money(it.amount) + ")" +
+          (CF.recurringLabel(it) ? " ↻" : "") + "</option>";
+      }).join("");
+      var shifts = Object.keys(active.shifts || {}).map(function (id) {
+        var it = findItem(id), w = active.shifts[id];
+        var lbl = it ? esc(it.desc) : esc(id);
+        var kind = it && it.kind === "in" ? "+" : "−";
+        return '<div class="shift-row"><span>' + kind + " " + lbl + '</span><span class="shift-w">' +
+          (w > 0 ? "+" : "") + w + " wk" + (Math.abs(w) === 1 ? "" : "s") + '</span>' +
+          '<button class="del" data-rmshift="' + esc(id) + '" title="Remove shift">✕</button></div>';
+      }).join("");
+      editor = '<div class="scn-editor"><div class="scn-edit-head">' +
+        '<input type="text" id="scnName" value="' + esc(active.name) + '" aria-label="Scenario name" maxlength="40">' +
+        '<button class="btn ghost btn-mini" id="scnDel">Delete scenario</button></div>' +
+        '<div class="shift-list">' + (shifts || '<p class="muted small">No shifts yet — stack one or more below.</p>') + "</div>" +
+        '<div class="shift-add"><select id="shiftItem" aria-label="Item to shift">' + opts + "</select>" +
+        '<label class="shift-slider">Weeks <b id="shiftVal">2</b><input type="range" id="shiftRange" min="-4" max="6" value="2"></label>' +
+        '<button class="btn btn-mini" id="shiftAdd">Add shift</button></div>' +
+        '<p class="muted small">Positive weeks push an item later (a late-paying customer, a delayed bill). Negative pulls it earlier.</p></div>';
+    } else if (scns.length) {
+      editor = '<p class="muted">Pick a scenario above to edit its shifts.</p>';
+    } else {
+      editor = '<p class="muted">Name a scenario — e.g. “Big client pays 3 weeks late” — then stack the shifted payments inside it. Its balance line appears on the chart in its own color.</p>';
+    }
+
+    var tB = CF.totals(fcBase);
+    var cmp = '<div class="tablewrap"><table class="cmptable"><thead><tr><th>Scenario</th>' +
+      '<th class="num">Ending balance</th><th class="num">Lowest week</th><th class="num">Shortfall wks</th><th class="num">Lowest vs base</th>' +
+      "</tr></thead><tbody>" + cmpRow("Base", "#3c4a54", tB.endBalance, tB.minBalance, CF.shortfalls(fcBase).critical.length, null);
+    scnFcs.forEach(function (sf) {
+      var d = CF.scenarioDiff(fcBase, sf.fc);
+      cmp += cmpRow(sf.scn.name, sf.scn.color, d.scnEnd, d.scnMin, d.scnShortfalls, d.minDelta);
+    });
+    cmp += "</tbody></table></div>";
+
+    var legend = '<p class="legend"><span class="sw in"></span> money in <span class="sw out"></span> money out ' +
+      '<span class="sw bal"></span> base balance' +
+      scns.map(function (sc) { return ' <span class="sw scnsw" style="border-color:' + esc(sc.color) + '"></span> ' + esc(sc.name); }).join("") + "</p>";
+
+    return '<section class="card scenario"><div class="scenario-head"><h2>Scenario desk</h2>' +
+      '<p class="muted">Float-style what-ifs: name a scenario, stack several shifted payments inside it, and compare every scenario against the base forecast.</p></div>' +
+      '<div class="scn-tabs">' + tabs + "</div>" + editor +
+      '<h3 class="cmp-head">Scenario comparison</h3>' + cmp + legend + "</section>";
   }
 
   function render() {
     var fc = baseForecast();
-    var fcW = (state.whatIfId && state.whatIfWeeks > 0) ? whatIfForecast() : null;
+    var scnFcs = scenarioForecasts();
     var t = CF.totals(fc);
+    var rw = CF.runwayWeeks(fc);
+    var rwTxt = rw === Infinity ? fc.length + "+ wks" : rw + (rw === 1 ? " wk" : " wks");
+    var rwTone = rw === Infinity || rw > 8 ? "tone-brass" : rw > 4 ? "tone-ink" : "tone-out";
     var app = document.getElementById("app");
     app.innerHTML =
       '<header class="topbar"><div class="topbar-inner"><div class="brand">' +
@@ -209,12 +287,13 @@
       '<div class="stat tone-in"><b>' + CF.money(t.totalIn) + '</b><span>expected in</span></div>' +
       '<div class="stat tone-out"><b>' + CF.money(t.totalOut) + '</b><span>expected out</span></div>' +
       '<div class="stat tone-brass"><b>' + CF.money(t.endBalance) + '</b><span>ending balance</span></div>' +
-      '<div class="stat tone-ink"><b>' + CF.money(t.minBalance) + '</b><span>lowest week</span></div></div>' +
+      '<div class="stat tone-ink"><b>' + CF.money(t.minBalance) + '</b><span>lowest week</span></div>' +
+      '<div class="stat ' + rwTone + '"><b>' + rwTxt + '</b><span>cash runway</span></div></div>' +
       '<label class="alertlevel"><span>Low-cash alert level</span><input type="text" id="warnAt" value="' + esc(String(state.warnAt)) + '" title="Warn when weekly balance drops under this amount"></label>' +
-      renderAlerts(fc, state.warnAt) + chartSVG(fc, fcW) +
-      '<p class="legend"><span class="sw in"></span> money in <span class="sw out"></span> money out <span class="sw bal"></span> balance <span class="sw wi"></span> what-if balance</p>' +
+      renderAlerts(fc, state.warnAt) + chartSVG(fc, scnFcs) +
+      '<p class="legend"><span class="sw in"></span> money in <span class="sw out"></span> money out <span class="sw bal"></span> balance</p>' +
       "</section>" +
-      whatIfPanel(fc, fcW || fc) +
+      scenarioDesk(fc, scnFcs) +
       '<div class="ledger-grid">' +
       '<section class="card"><h2>Expected money in <span class="count">' + state.items.filter(function (i) { return i.kind === "in"; }).length + "</span></h2>" +
       '<input type="search" id="searchIn" class="ledger-search" placeholder="Search invoices…" value="' + esc(state.searchIn) + '" aria-label="Search invoices">' +
@@ -282,9 +361,9 @@
       });
     });
     Array.prototype.forEach.call(document.querySelectorAll(".del"), function (b) {
+      if (b.hasAttribute("data-rmshift")) return; // scenario shifts bind below
       b.addEventListener("click", function () {
         state.items = state.items.filter(function (it) { return it.id !== b.getAttribute("data-id"); });
-        if (state.whatIfId === b.getAttribute("data-id")) { state.whatIfId = ""; state.whatIfWeeks = 0; }
         save(); render();
       });
     });
@@ -315,11 +394,11 @@
     });
     document.getElementById("loadSample").addEventListener("click", function () {
       state.items = CF.SAMPLE_INVOICES.concat(CF.SAMPLE_BILLS);
-      state.startBalance = CF.SAMPLE_START_BALANCE; state.whatIfWeeks = 0;
+      state.startBalance = CF.SAMPLE_START_BALANCE;
       save(); render();
     });
     document.getElementById("clearAll").addEventListener("click", function () {
-      if (confirm("Remove all invoices and bills?")) { state.items = []; state.whatIfWeeks = 0; save(); render(); }
+      if (confirm("Remove all invoices and bills?")) { state.items = []; save(); render(); }
     });
     document.getElementById("addIn").addEventListener("submit", function (e) {
       e.preventDefault();
@@ -346,11 +425,47 @@
       setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 500);
     });
     document.getElementById("printReport").addEventListener("click", function () { window.print(); });
-    document.getElementById("wiSel").addEventListener("change", function (e) { state.whatIfId = e.target.value; render(); });
-    document.getElementById("wiRange").addEventListener("input", function (e) {
-      state.whatIfWeeks = +e.target.value;
-      document.getElementById("wiVal").textContent = state.whatIfWeeks;
-      render();
+    // scenario desk
+    var scnNew = document.getElementById("scnNew");
+    if (scnNew) scnNew.addEventListener("click", function () {
+      var n = state.scenarios.length;
+      var sc = { id: CF.newId("scn"), name: "Scenario " + "ABC"[n], shifts: {}, color: scnColor(n) };
+      state.scenarios.push(sc);
+      state.activeScn = sc.id;
+      save(); render();
+    });
+    Array.prototype.forEach.call(document.querySelectorAll("[data-scn]"), function (chip) {
+      chip.addEventListener("click", function () { state.activeScn = chip.getAttribute("data-scn"); save(); render(); });
+    });
+    var scnName = document.getElementById("scnName");
+    if (scnName) scnName.addEventListener("change", function () {
+      var sc = scnById(state.activeScn);
+      if (sc && scnName.value.trim()) { sc.name = scnName.value.trim().slice(0, 40); save(); render(); }
+    });
+    var scnDel = document.getElementById("scnDel");
+    if (scnDel) scnDel.addEventListener("click", function () {
+      state.scenarios = state.scenarios.filter(function (s) { return s.id !== state.activeScn; });
+      state.activeScn = state.scenarios.length ? state.scenarios[state.scenarios.length - 1].id : "";
+      save(); render();
+    });
+    var shiftRange = document.getElementById("shiftRange");
+    if (shiftRange) shiftRange.addEventListener("input", function () {
+      document.getElementById("shiftVal").textContent = shiftRange.value;
+    });
+    var shiftAdd = document.getElementById("shiftAdd");
+    if (shiftAdd) shiftAdd.addEventListener("click", function () {
+      var sc = scnById(state.activeScn);
+      var itemId = document.getElementById("shiftItem").value;
+      if (!sc || !itemId) return;
+      sc.shifts = sc.shifts || {};
+      sc.shifts[itemId] = parseInt(shiftRange.value, 10) || 0;
+      save(); render();
+    });
+    Array.prototype.forEach.call(document.querySelectorAll("[data-rmshift]"), function (b) {
+      b.addEventListener("click", function () {
+        var sc = scnById(state.activeScn);
+        if (sc && sc.shifts) { delete sc.shifts[b.getAttribute("data-rmshift")]; save(); render(); }
+      });
     });
     document.getElementById("horizonSel").addEventListener("change", function (e) {
       var v = parseInt(e.target.value, 10);

@@ -196,6 +196,32 @@
     return t;
   }
 
+  // Weeks of cash remaining before the balance goes negative.
+  // Returns the count of non-negative weeks, or Infinity when the
+  // balance never dips below zero on the horizon.
+  function runwayWeeks(fc) {
+    for (var i = 0; i < (fc || []).length; i++) if (fc[i].balance < 0) return i;
+    return Infinity;
+  }
+
+  // Scenario comparison vs a base forecast:
+  // { endDelta, minDelta, baseShortfalls, scnShortfalls, newShortfalls }
+  function scenarioDiff(fcBase, fcScn, warnAt) {
+    var tB = totals(fcBase), tS = totals(fcScn);
+    var bCrit = shortfalls(fcBase).critical.length;
+    var sCrit = shortfalls(fcScn).critical.length;
+    return {
+      endDelta: Math.round((tS.endBalance - tB.endBalance) * 100) / 100,
+      minDelta: Math.round((tS.minBalance - tB.minBalance) * 100) / 100,
+      baseShortfalls: bCrit,
+      scnShortfalls: sCrit,
+      newShortfalls: sCrit - bCrit,
+      baseEnd: tB.endBalance, scnEnd: tS.endBalance,
+      baseMin: tB.minBalance, scnMin: tS.minBalance,
+      warnAt: warnAt
+    };
+  }
+
   function money(n) {
     var neg = n < 0, v = Math.abs(Math.round(n * 100) / 100);
     var s = v.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
@@ -278,6 +304,7 @@
     weekStartOf: weekStartOf, addDays: addDays, addMonths: addMonths,
     expandRecurring: expandRecurring, recurringLabel: recurringLabel,
     forecast: forecast, shortfalls: shortfalls, totals: totals,
+    runwayWeeks: runwayWeeks, scenarioDiff: scenarioDiff,
     money: money, fmtWeek: fmtWeek, forecastToCSV: forecastToCSV, newId: newId,
     storageGet: storageGet, storageSet: storageSet, dedupeItems: dedupeItems
   };

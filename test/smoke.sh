@@ -165,15 +165,53 @@ const dd = CF.dedupeItems(batch, existing);
 (CF.forecast([], 0, 4, {}).length === 4 && CF.forecast([], 0, 26, {}).length === 26)
   ? ok('forecast: 4- and 26-week horizons return that many weeks') : bad('forecast horizon');
 
+// runwayWeeks: weeks of cash before a negative balance
+const rwItems = [
+  { id: 'b1', desc: 'Big bill', date: isoPlus(10), amount: 9000, kind: 'out' },
+  { id: 'i1', desc: 'Client pay', date: isoPlus(40), amount: 5000, kind: 'in' }
+];
+const rwFc = CF.forecast(rwItems, 1000, 13, {});
+const rw = CF.runwayWeeks(rwFc);
+(rw >= 1 && rw <= 3 && rwFc[rw].balance < 0)
+  ? ok('runwayWeeks: cash runs out at week ' + (rw + 1)) : bad('runwayWeeks: ' + rw);
+(CF.runwayWeeks(CF.forecast([{ id: 'i2', desc: 'Steady', date: isoPlus(5), amount: 100, kind: 'in', recurring: 'weekly' }], 5000, 13, {})) === Infinity)
+  ? ok('runwayWeeks: healthy forecast -> Infinity') : bad('runwayWeeks healthy');
+
+// scenarioDiff: named-scenario comparison vs base
+const scnItems = [{ id: 'inv1', desc: 'Acme invoice', date: isoPlus(8), amount: 4000, kind: 'in' }];
+const fBase = CF.forecast(scnItems, 0, 13, {});
+const fLate = CF.forecast(scnItems, 0, 13, { inv1: 3 });
+const diff = CF.scenarioDiff(fBase, fLate);
+(diff.baseShortfalls === fBase.filter(w => w.balance < 0).length &&
+  diff.scnShortfalls === fLate.filter(w => w.balance < 0).length &&
+  diff.newShortfalls === diff.scnShortfalls - diff.baseShortfalls &&
+  typeof diff.minDelta === 'number' && typeof diff.endDelta === 'number')
+  ? ok('scenarioDiff: shortfall counts + deltas vs base (' + diff.newShortfalls + ' new shortfall weeks)')
+  : bad('scenarioDiff: ' + JSON.stringify(diff));
+// scenario shifts are just multi-item shiftMaps: two shifts combine
+const two = [
+  { id: 'a1', desc: 'In', date: isoPlus(8), amount: 2000, kind: 'in' },
+  { id: 'b1', desc: 'Out', date: isoPlus(9), amount: 1500, kind: 'out' }
+];
+const fBoth = CF.forecast(two, 0, 13, { a1: 2, b1: -1 });
+const fOne = CF.forecast(two, 0, 13, { a1: 2 });
+(fBoth.length === 13 && JSON.stringify(fBoth) !== JSON.stringify(fOne))
+  ? ok('scenario: multi-item shiftMap applies both shifts') : bad('multi-shift');
+
 console.log('NEW_PASS=' + pass + ' NEW_FAIL=' + fail);
 process.exit(fail ? 1 : 0);
 NODEEOF
 [ $? -eq 0 ] && ok "new-feature node checks green" || bad "new-feature node checks had failures"
 
 # new UI hooks rendered by js/app.js (index.html is just an app shell)
-for id in exportFc printReport inRec outRec editSave editCancel horizonSel; do
+for id in exportFc printReport inRec outRec editSave editCancel horizonSel scnNew scnName scnDel shiftItem shiftRange shiftAdd; do
   grep -q "id=\"$id\"\|id='$id'" js/app.js && ok "app.js renders #$id" || bad "app.js missing #$id"
 done
+# rebuilt chart: danger zone, balance area fill, scenario lines, no clamped line
+for cls in dangerzone bal-area scn-line scn-tabs cmptable shift-add; do
+  grep -q "$cls" js/app.js css/style.css && ok "chart/scenario desk has .$cls" || bad "missing .$cls"
+done
+[ -f REDESIGN-AUDIT.md ] && ok "REDESIGN-AUDIT.md present" || bad "REDESIGN-AUDIT.md missing"
 
 echo "---"
 echo "smoke: $PASS passed, $FAIL failed"
