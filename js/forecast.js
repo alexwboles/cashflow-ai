@@ -97,10 +97,11 @@
     return new Date(y, m, Math.min(day, last));
   }
 
-  // Recurring items (recurring: 'weekly' | 'monthly') are projected forward
-  // across the horizon instead of appearing once. Past occurrences are NOT
-  // resurrected: projection starts at the later of (item date, current week).
-  // Each occurrence carries baseId (the original item id) and an occurrence index.
+  // Recurring items (recurring: 'weekly' | 'monthly' | 'quarterly' | 'yearly')
+  // are projected forward across the horizon instead of appearing once.
+  // Past occurrences are NOT resurrected: projection starts at the later of
+  // (item date, current week). Each occurrence carries baseId (the original
+  // item id) and an occurrence index.
   function expandRecurring(items, weeks) {
     weeks = weeks || 13;
     var today = new Date();
@@ -108,7 +109,10 @@
     var horizonEnd = addDays(w0, weeks * 7 - 1);
     var out = [];
     (items || []).forEach(function (it) {
-      var rec = it.recurring === 'weekly' ? 'weekly' : (it.recurring === 'monthly' ? 'monthly' : '');
+      var rec = it.recurring === 'weekly' ? 'weekly'
+        : it.recurring === 'monthly' ? 'monthly'
+        : it.recurring === 'quarterly' ? 'quarterly'
+        : it.recurring === 'yearly' ? 'yearly' : '';
       var d0 = parseDate(it.date);
       if (!rec || !d0) { out.push(it); return; }
       var start = d0 < w0 ? new Date(w0.getTime()) : d0;
@@ -122,7 +126,10 @@
         occ.id = it.id + '#' + k;
         occ.occurrence = k;
         out.push(occ);
-        d = rec === 'weekly' ? addDays(d, 7) : addMonths(d, 1);
+        d = rec === 'weekly' ? addDays(d, 7)
+          : rec === 'monthly' ? addMonths(d, 1)
+          : rec === 'quarterly' ? addMonths(d, 3)
+          : addMonths(d, 12);
         k++;
       }
     });
@@ -219,7 +226,10 @@
   }
 
   function recurringLabel(it) {
-    return it.recurring === 'weekly' ? 'weekly' : it.recurring === 'monthly' ? 'monthly' : '';
+    return it.recurring === 'weekly' ? 'weekly'
+      : it.recurring === 'monthly' ? 'monthly'
+      : it.recurring === 'quarterly' ? 'quarterly'
+      : it.recurring === 'yearly' ? 'yearly' : '';
   }
 
   var _seq = 1;
@@ -243,6 +253,25 @@
     _mem[key] = val;
   }
 
+  // CSV import de-duplication: split fresh items into { fresh, dupes }. A dupe
+  // matches an existing item on kind + description + date + amount (or an
+  // earlier row in the same import batch).
+  function itemKey(it) {
+    return it.kind + "|" + String(it.desc || "").trim().toLowerCase() + "|" + it.date + "|" +
+      (+it.amount).toFixed(2);
+  }
+  function dedupeItems(items, existing) {
+    var seen = {};
+    (existing || []).forEach(function (it) { seen[itemKey(it)] = true; });
+    var fresh = [], dupes = [];
+    (items || []).forEach(function (it) {
+      var k = itemKey(it);
+      if (seen[k]) dupes.push(it);
+      else { seen[k] = true; fresh.push(it); }
+    });
+    return { fresh: fresh, dupes: dupes };
+  }
+
   return {
     parseAmount: parseAmount, parseDate: parseDate, toISODate: toISODate,
     parseCSV: parseCSV, rowsToItems: rowsToItems,
@@ -250,6 +279,6 @@
     expandRecurring: expandRecurring, recurringLabel: recurringLabel,
     forecast: forecast, shortfalls: shortfalls, totals: totals,
     money: money, fmtWeek: fmtWeek, forecastToCSV: forecastToCSV, newId: newId,
-    storageGet: storageGet, storageSet: storageSet
+    storageGet: storageGet, storageSet: storageSet, dedupeItems: dedupeItems
   };
 });

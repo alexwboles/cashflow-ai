@@ -115,6 +115,31 @@ const occDates = fc.flatMap(w => w.items).map(i => i.date);
 (occDates.length >= 10 && occDates.every(d => d >= w0))
   ? ok('flow12: legacy weekly restarts this week — ' + occDates.length + ' forward occurrences, none back-dated') : bad('flow12: ' + occDates.length + ' occ');
 
+// Flow 13: quarterly recurring bill over a 26-week horizon
+items = [{ id: 'bill-q', desc: 'Quarterly tax', date: isoPlus(3), amount: 2500, kind: 'out', recurring: 'quarterly' }];
+fc = CF.forecast(items, 10000, 26, {});
+const qWeeks = fc.filter(w => w.outflow === 2500);
+(qWeeks.length >= 2 && qWeeks.length <= 3 && fc.length === 26)
+  ? ok('flow13: quarterly tax lands in ' + qWeeks.length + ' of 26 weeks') : bad('flow13: q weeks=' + qWeeks.length);
+
+// Flow 14: yearly recurring bill — exactly 1 occurrence inside 26 weeks
+items = [{ id: 'bill-y', desc: 'Yearly insurance', date: isoPlus(3), amount: 1400, kind: 'out', recurring: 'yearly' }];
+fc = CF.forecast(items, 10000, 26, {});
+(fc.filter(w => w.outflow === 1400).length === 1)
+  ? ok('flow14: yearly insurance occurs exactly once in 26 weeks') : bad('flow14: yearly count wrong');
+
+// Flow 15: import dedupe — re-importing the same rows yields only dupes
+const r3 = CF.rowsToItems(CF.parseCSV(text));
+const dd2 = CF.dedupeItems(r3.items, r3.items);
+(dd2.fresh.length === 0 && dd2.dupes.length === r3.items.length)
+  ? ok('flow15: re-import of ' + r3.items.length + ' rows -> all dupes, 0 fresh') : bad('flow15: dedupe broken');
+
+// Flow 16: app wires horizon select, quarterly/yearly recurrence, dedupe
+const appJs = fs.readFileSync('/home/hatch/workspace/cashflow-ai/js/app.js', 'utf8');
+(/id="horizonSel"/.test(appJs) && /state\.horizon/.test(appJs) && /recOptions/.test(appJs) &&
+ /dedupeItems/.test(appJs) && /quarterly/.test(appJs) && /yearly/.test(appJs))
+  ? ok('flow16: app wires horizonSel, recOptions w/ quarterly+yearly, dedupeItems') : bad('flow16: app wiring missing');
+
 console.log('---');
 console.log('e2e: ' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);

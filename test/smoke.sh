@@ -131,6 +131,39 @@ const lines = csv.split('\r\n');
 // recurringLabel
 (CF.recurringLabel({ recurring: 'weekly' }) === 'weekly' && CF.recurringLabel({ recurring: 'monthly' }) === 'monthly' && CF.recurringLabel({}) === '')
   ? ok('recurringLabel: weekly/monthly/blank') : bad('recurringLabel');
+(CF.recurringLabel({ recurring: 'quarterly' }) === 'quarterly' && CF.recurringLabel({ recurring: 'yearly' }) === 'yearly')
+  ? ok('recurringLabel: quarterly/yearly') : bad('recurringLabel new values');
+
+// expandRecurring: quarterly + yearly over a 26-week horizon
+const qy = [
+  { id: 'q1', desc: 'Quarterly tax', date: isoPlus(10), amount: 2000, kind: 'out', recurring: 'quarterly' },
+  { id: 'y1', desc: 'Yearly insurance', date: isoPlus(10), amount: 1200, kind: 'out', recurring: 'yearly' }
+];
+const qyExp = CF.expandRecurring(qy, 26);
+const qOcc = qyExp.filter(i => i.baseId === 'q1'), yOcc = qyExp.filter(i => i.baseId === 'y1');
+(qOcc.length >= 2 && qOcc.length <= 3 && yOcc.length === 1)
+  ? ok('expandRecurring: quarterly x' + qOcc.length + ', yearly x' + yOcc.length + ' over 26 weeks')
+  : bad('expandRecurring quarterly/yearly: q=' + qOcc.length + ' y=' + yOcc.length);
+const qMonths = qOcc.map(i => +i.date.slice(5, 7));
+const qGaps = qMonths.slice(1).map((m, i) => (m - qMonths[i] + 12) % 12);
+qGaps.every(g => g === 3) ? ok('expandRecurring: quarterly occurrences 3 months apart') : bad('quarterly gaps: ' + qGaps.join(','));
+
+// dedupeItems: dupes vs existing, case-insensitive, and within the same batch
+const existing = [{ id: 'e1', desc: 'Acme invoice', date: '2026-10-20', amount: 500, kind: 'in' }];
+const batch = [
+  { id: 'n1', desc: 'Acme invoice', date: '2026-10-20', amount: 500, kind: 'in' },
+  { id: 'n2', desc: 'ACME INVOICE', date: '2026-10-20', amount: 500, kind: 'in' },
+  { id: 'n3', desc: 'New bill', date: '2026-10-21', amount: 100, kind: 'out' },
+  { id: 'n4', desc: 'New bill', date: '2026-10-21', amount: 100, kind: 'out' }
+];
+const dd = CF.dedupeItems(batch, existing);
+(dd.fresh.length === 1 && dd.dupes.length === 3)
+  ? ok('dedupeItems: 1 fresh, 3 dupes (existing match + case-insensitive + in-batch)') : bad('dedupeItems: fresh=' + dd.fresh.length + ' dupes=' + dd.dupes.length);
+(CF.dedupeItems([], []).fresh.length === 0) ? ok('dedupeItems: empty -> empty') : bad('dedupeItems empty');
+
+// forecast honors arbitrary horizons
+(CF.forecast([], 0, 4, {}).length === 4 && CF.forecast([], 0, 26, {}).length === 26)
+  ? ok('forecast: 4- and 26-week horizons return that many weeks') : bad('forecast horizon');
 
 console.log('NEW_PASS=' + pass + ' NEW_FAIL=' + fail);
 process.exit(fail ? 1 : 0);
@@ -138,7 +171,7 @@ NODEEOF
 [ $? -eq 0 ] && ok "new-feature node checks green" || bad "new-feature node checks had failures"
 
 # new UI hooks rendered by js/app.js (index.html is just an app shell)
-for id in exportFc printReport inRec outRec editSave editCancel; do
+for id in exportFc printReport inRec outRec editSave editCancel horizonSel; do
   grep -q "id=\"$id\"\|id='$id'" js/app.js && ok "app.js renders #$id" || bad "app.js missing #$id"
 done
 

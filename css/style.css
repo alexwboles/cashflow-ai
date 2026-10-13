@@ -83,6 +83,17 @@ h2 { font-family: var(--serif); font-size: 22px; font-weight: 700; letter-spacin
 .hero { position: relative; overflow: hidden; }
 .hero::before { content: ""; position: absolute; inset: 0 0 auto 0; height: 5px; background: var(--brass); }
 .hero-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; flex-wrap: wrap; margin-bottom: 18px; }
+.hero-controls { display: flex; gap: 10px; align-items: flex-start; flex-wrap: wrap; }
+.horizon {
+  display: flex; align-items: center; gap: 10px;
+  font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: var(--muted);
+  background: var(--paper); border: 1px solid var(--border); border-radius: 0; padding: 10px 14px;
+}
+.horizon select {
+  padding: 8px 10px; font-size: 14px; font-weight: 700;
+  border: 1px solid var(--border); border-radius: 0; color: var(--ink); background: #fff;
+}
+.horizon select:focus { outline: none; border-color: var(--brass); box-shadow: var(--ring); }
 .startbal {
   display: flex; align-items: center; gap: 10px;
   font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: var(--muted);

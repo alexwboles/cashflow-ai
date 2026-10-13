@@ -1,6 +1,6 @@
 # 💸 CashFlow AI
 
-**See 13 weeks into your business's financial future.** Enter expected invoices in and bills out, get a weekly forecast chart, shortfall alerts, a what-if late-payment simulator, and CSV import — all running 100% in your browser.
+**See 4 to 26 weeks into your business's financial future.** Enter expected invoices in and bills out, get a weekly forecast chart, shortfall alerts, a what-if late-payment simulator, and CSV import with duplicate detection — all running 100% in your browser. Recurring items can repeat weekly, monthly, quarterly, or yearly.
 
 ## The problem
 
@@ -44,7 +44,7 @@ bash test/e2e.sh     # full flows: forecast, shortfalls, what-if, CSV import
 index.html          # app shell
 css/style.css       # theme
 js/data.js          # sample invoices/bills + starting balance
-js/forecast.js      # pure engine: parsing, 13-week forecast, shortfalls, what-if (browser + node)
+js/forecast.js      # pure engine: parsing, N-week forecast, shortfalls, what-if, import dedupe (browser + node)
 js/app.js           # UI rendering, SVG chart, events (browser only)
 data/sample.csv     # importable sample (type,description,date,amount)
 test/smoke.sh       # smoke tests

@@ -13,12 +13,14 @@
     items: CF.storageGet("items", null),
     startBalance: CF.storageGet("startBalance", CF.SAMPLE_START_BALANCE),
     warnAt: CF.storageGet("warnAt", 1000),
+    horizon: CF.storageGet("horizon", 13),
     whatIfId: "",
     whatIfWeeks: 0,
     editingId: null,
     searchIn: "",
     searchOut: ""
   };
+  if ([4, 13, 26].indexOf(+state.horizon) === -1) state.horizon = 13;
   if (!state.items) {
     state.items = CF.SAMPLE_INVOICES.concat(CF.SAMPLE_BILLS);
     CF.storageSet("items", state.items);
@@ -29,13 +31,14 @@
     CF.storageSet("items", state.items);
     CF.storageSet("startBalance", state.startBalance);
     CF.storageSet("warnAt", state.warnAt);
+    CF.storageSet("horizon", state.horizon);
   }
 
-  function baseForecast() { return CF.forecast(state.items, state.startBalance, 13, {}); }
+  function baseForecast() { return CF.forecast(state.items, state.startBalance, state.horizon, {}); }
   function whatIfForecast() {
     var shift = {};
     if (state.whatIfId && state.whatIfWeeks > 0) shift[state.whatIfId] = state.whatIfWeeks;
-    return CF.forecast(state.items, state.startBalance, 13, shift);
+    return CF.forecast(state.items, state.startBalance, state.horizon, shift);
   }
 
   // ---------- SVG chart ----------
@@ -50,7 +53,7 @@
     function x(i) { return padL + (i + 0.5) * (cw / fc.length); }
     var bw = Math.min(26, (cw / fc.length) / 3.2);
 
-    var s = '<svg viewBox="0 0 ' + W + " " + H + '" class="chart" role="img" aria-label="13-week cash flow chart">';
+    var s = '<svg viewBox="0 0 ' + W + " " + H + '" class="chart" role="img" aria-label="' + fc.length + '-week cash flow chart">';
     // gridlines
     [0.25, 0.5, 0.75, 1].forEach(function (f) {
       var gv = Math.round(maxV * f / 500) * 500;
@@ -84,7 +87,7 @@
     warnAt = (warnAt == null) ? 1000 : warnAt;
     var sf = CF.shortfalls(fc, warnAt);
     if (!sf.critical.length && !sf.watch.length)
-      return '<div class="alert ok">No shortfalls projected — cash stays positive all 13 weeks.</div>';
+      return '<div class="alert ok">No shortfalls projected — cash stays positive all ' + fc.length + ' weeks.</div>';
     var h = "";
     if (sf.critical.length) {
       h += '<div class="alert crit"><b>Cash shortfall projected in ' + sf.critical.length + " week(s):</b> " +
@@ -100,6 +103,15 @@
   function recBadge(it) {
     var r = CF.recurringLabel(it);
     return r ? ' <span class="badge-rec" title="Repeats ' + r + '">↻ ' + r + "</span>" : "";
+  }
+
+  var REC_VALUES = ["weekly", "monthly", "quarterly", "yearly"];
+  function normRec(v) { return REC_VALUES.indexOf(v) >= 0 ? v : ""; }
+  function recOptions(sel) {
+    var labels = { "": "One-time", weekly: "Weekly", monthly: "Monthly", quarterly: "Quarterly", yearly: "Yearly" };
+    return [""].concat(REC_VALUES).map(function (v) {
+      return "<option value='" + v + "'" + (v === sel ? " selected" : "") + ">" + labels[v] + "</option>";
+    }).join("");
   }
 
   function itemRows(kind) {
@@ -119,9 +131,7 @@
   function editRow(it) {
     return "<tr class='editing'><td><input type='date' id='editDate' value='" + esc(it.date) + "'></td>" +
       "<td><input type='text' id='editDesc' value='" + esc(it.desc) + "'>" +
-      "<select id='editRec'><option value=''>One-time</option>" +
-      "<option value='weekly'" + (it.recurring === 'weekly' ? " selected" : "") + ">Weekly</option>" +
-      "<option value='monthly'" + (it.recurring === 'monthly' ? " selected" : "") + ">Monthly</option></select></td>" +
+      "<select id='editRec'>" + recOptions(it.recurring || "") + "</select></td>" +
       "<td class='num'><input type='text' id='editAmt' value='" + esc(String(it.amount)) + "'></td>" +
       "<td class='rowacts'><button class='btn btn-mini' id='editSave'>Save</button>" +
       "<button class='btn ghost btn-mini' id='editCancel'>Cancel</button></td></tr>";
@@ -182,15 +192,19 @@
     app.innerHTML =
       '<header class="topbar"><div class="topbar-inner"><div class="brand">' +
       '<span class="brand-mark" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M2 9c2.5 0 2.5 3 5 3s2.5-3 5-3 2.5 3 5 3 2.5-3 5-3"/><path d="M2 15c2.5 0 2.5 3 5 3s2.5-3 5-3 2.5 3 5 3 2.5-3 5-3"/></svg></span>' +
-      '<span class="brand-text"><span class="brand-name">CashFlow <em>AI</em></span><span class="brand-sub">13-week treasury forecast</span></span></div>' +
+      '<span class="brand-text"><span class="brand-name">CashFlow <em>AI</em></span><span class="brand-sub">' + state.horizon + '-week treasury forecast</span></span></div>' +
       '<div class="topactions"><button id="loadSample" class="btn ghost light">Sample data</button>' +
       '<button id="clearAll" class="btn ghost light">Clear</button>' +
       '<button id="exportFc" class="btn ghost light">Export CSV</button>' +
       '<button id="printReport" class="btn ghost light">Print report</button></div></div></header>' +
       "<main>" +
-      '<section class="card hero"><div class="hero-head"><div><h2>13-week forecast</h2>' +
+      '<section class="card hero"><div class="hero-head"><div><h2>' + state.horizon + '-week forecast</h2>' +
       '<p class="muted">Every dollar in and out, week by week &mdash; so a shortfall never surprises you.</p></div>' +
-      '<label class="startbal"><span>Starting balance</span><input type="text" id="startBal" value="' + esc(String(state.startBalance)) + '"></label></div>' +
+      '<div class="hero-controls"><label class="horizon"><span>Horizon</span><select id="horizonSel">' +
+      [4, 13, 26].map(function (w) {
+        return '<option value="' + w + '"' + (w === state.horizon ? " selected" : "") + ">" + w + " weeks</option>";
+      }).join("") + "</select></label>" +
+      '<label class="startbal"><span>Starting balance</span><input type="text" id="startBal" value="' + esc(String(state.startBalance)) + '"></label></div></div>' +
       '<div class="statgrid">' +
       '<div class="stat tone-in"><b>' + CF.money(t.totalIn) + '</b><span>expected in</span></div>' +
       '<div class="stat tone-out"><b>' + CF.money(t.totalOut) + '</b><span>expected out</span></div>' +
@@ -206,14 +220,14 @@
       '<input type="search" id="searchIn" class="ledger-search" placeholder="Search invoices…" value="' + esc(state.searchIn) + '" aria-label="Search invoices">' +
       '<form id="addIn" class="addform"><input type="text" id="inDesc" placeholder="Invoice description" required>' +
       '<input type="date" id="inDate" required><input type="text" id="inAmt" placeholder="Amount" required>' +
-      '<select id="inRec" title="Repeat"><option value="">One-time</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option></select>' +
+      '<select id="inRec" title="Repeat">' + recOptions("") + '</select>' +
       '<button class="btn" type="submit">Add</button></form>' +
       '<div class="tablewrap"><table><thead><tr><th>Expected</th><th>Description</th><th class="num">Amount</th><th></th></tr></thead><tbody>' + itemRows("in") + "</tbody></table></div></section>" +
       '<section class="card"><h2>Expected money out <span class="count">' + state.items.filter(function (i) { return i.kind === "out"; }).length + "</span></h2>" +
       '<input type="search" id="searchOut" class="ledger-search" placeholder="Search bills…" value="' + esc(state.searchOut) + '" aria-label="Search bills">' +
       '<form id="addOut" class="addform"><input type="text" id="outDesc" placeholder="Bill description" required>' +
       '<input type="date" id="outDate" required><input type="text" id="outAmt" placeholder="Amount" required>' +
-      '<select id="outRec" title="Repeat"><option value="">One-time</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option></select>' +
+      '<select id="outRec" title="Repeat">' + recOptions("") + '</select>' +
       '<button class="btn" type="submit">Add</button></form>' +
       '<div class="tablewrap"><table><thead><tr><th>Due</th><th>Description</th><th class="num">Amount</th><th></th></tr></thead><tbody>' + itemRows("out") + "</tbody></table></div></section>" +
       "</div>" +
@@ -232,7 +246,7 @@
   function addItem(kind, desc, dateStr, amtStr, recurring) {
     var amt = CF.parseAmount(amtStr), dt = CF.parseDate(dateStr);
     if (!desc.trim() || !dt || amt == null || amt <= 0) return false;
-    var rec = recurring === "weekly" || recurring === "monthly" ? recurring : "";
+    var rec = normRec(recurring);
     state.items.push({ id: CF.newId(kind === "in" ? "inv" : "bill"), desc: desc.trim(), date: CF.toISODate(dt), amount: Math.round(amt * 100) / 100, kind: kind, recurring: rec });
     save(); render(); return true;
   }
@@ -253,7 +267,7 @@
     it.desc = desc.trim();
     it.date = CF.toISODate(dt);
     it.amount = Math.round(amt * 100) / 100;
-    it.recurring = rec === "weekly" || rec === "monthly" ? rec : "";
+    it.recurring = normRec(rec);
     state.editingId = null;
     save(); render();
   }
@@ -338,16 +352,27 @@
       document.getElementById("wiVal").textContent = state.whatIfWeeks;
       render();
     });
+    document.getElementById("horizonSel").addEventListener("change", function (e) {
+      var v = parseInt(e.target.value, 10);
+      state.horizon = [4, 13, 26].indexOf(v) === -1 ? 13 : v;
+      save(); render();
+    });
     document.getElementById("csvFile").addEventListener("change", function (e) {
       var f = e.target.files[0]; if (!f) return;
       var rd = new FileReader();
       rd.onload = function () {
         var res = CF.rowsToItems(CF.parseCSV(rd.result));
         var msg = document.getElementById("csvMsg");
-        if (res.items.length) {
-          state.items = state.items.concat(res.items);
+        var ded = CF.dedupeItems(res.items, state.items);
+        if (ded.fresh.length) {
+          state.items = state.items.concat(ded.fresh);
           save(); render();
-          document.getElementById("csvMsg").innerHTML = '<span class="good">Imported ' + res.items.length + " rows" + (res.errors.length ? " (" + res.errors.length + " skipped)" : "") + ".</span>";
+          var bits = ["Imported " + ded.fresh.length + " row" + (ded.fresh.length === 1 ? "" : "s")];
+          if (ded.dupes.length) bits.push(ded.dupes.length + " duplicate" + (ded.dupes.length === 1 ? "" : "s") + " skipped");
+          if (res.errors.length) bits.push(res.errors.length + " invalid skipped");
+          document.getElementById("csvMsg").innerHTML = '<span class="good">' + esc(bits.join(" · ")) + ".</span>";
+        } else if (res.items.length) {
+          msg.innerHTML = '<span class="bad">No new rows — all ' + res.items.length + " matched existing items.</span>";
         } else {
           msg.innerHTML = '<span class="bad">No rows imported: ' + esc(res.errors.join("; ")) + "</span>";
         }
