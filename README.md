@@ -1,5 +1,7 @@
 # 💸 CashFlow AI
 
+> **This project has been merged into invoicepilot-ai — active development continues at https://github.com/alexwboles/invoicepilot-ai.** The 13-week forecasting engine now lives there as a Forecast tab, auto-fed by outstanding invoices (no more re-typing). This repo is archived and read-only.
+
 **See 4 to 26 weeks into your business's financial future.** Enter expected invoices in and bills out, get a weekly forecast chart, shortfall alerts, a what-if late-payment simulator, and CSV import with duplicate detection — all running 100% in your browser. Recurring items can repeat weekly, monthly, quarterly, or yearly.
 
 ## The problem
